@@ -33,6 +33,15 @@ pub struct AppState {
     results: RwLock<HashMap<String, CheckResult>>,
 }
 
+#[derive(Serialize)]
+pub struct AggregateSummary {
+    pub total: usize,
+    pub up: usize,
+    pub warn: usize,
+    pub down: usize,
+    pub critical_down: usize,
+}
+
 impl AppState {
     pub fn new(cfg: &Config) -> Self {
         let mut map = HashMap::new();
@@ -68,5 +77,66 @@ impl AppState {
 
     pub fn snapshot(&self) -> Vec<CheckResult> {
         self.results.read().unwrap().values().cloned().collect()
+    }
+
+    /// True = aggregate OK
+    pub fn aggregate_ok(&self) -> bool {
+        let results = self.results.read().unwrap();
+
+        for r in results.values() {
+            if r.critical && r.status == CheckStatus::Down {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    pub fn aggregate_snapshot(
+        &self,
+    ) -> (bool, AggregateSummary, Vec<CheckResult>, Vec<CheckResult>) {
+        let results = self.results.read().unwrap();
+
+        let mut up = 0;
+        let mut warn = 0;
+        let mut down = 0;
+        let mut critical_down = 0;
+
+        let mut failed = Vec::new();
+        let mut warned = Vec::new();
+
+        for r in results.values() {
+            match r.status {
+                CheckStatus::Up => up += 1,
+                CheckStatus::Warn => {
+                    warn += 1;
+                    warned.push(r.clone());
+                }
+                CheckStatus::Down => {
+                    down += 1;
+                    if r.critical {
+                        critical_down += 1;
+                        failed.push(r.clone());
+                    } else {
+                        warned.push(r.clone());
+                    }
+                }
+            }
+        }
+
+        let summary = AggregateSummary {
+            total: results.len(),
+            up,
+            warn,
+            down,
+            critical_down,
+        };
+
+        let ok = critical_down == 0;
+        (ok, summary, failed, warned)
+    }
+
+    pub fn uptime(&self) -> String {
+        humantime::format_duration(self.start.elapsed()).to_string()
     }
 }
