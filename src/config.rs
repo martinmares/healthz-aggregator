@@ -141,11 +141,45 @@ pub enum CheckSpec {
         expected_regex: Option<String>,
     },
 
+    File {
+        /// File path on the local filesystem.
+        path: String,
+        /// Optional format hint: "text" (default) or "json".
+        #[serde(default)]
+        format: Option<String>,
+        /// Optional JSON path (only a small subset is supported, see docs).
+        #[serde(default)]
+        json_path: Option<String>,
+        /// Exact match.
+        #[serde(default)]
+        expected_value: Option<String>,
+        /// Substring match.
+        #[serde(default, alias = "expected_substring")]
+        expected_contains: Option<String>,
+        /// Regex match.
+        #[serde(default)]
+        expected_regex: Option<String>,
+    },
+
     /// Oracle SQL check (planned; likely feature-gated).
     Oracle {
-        connection_string: String,
+        /// Either provide a full Oracle connect string...
+        #[serde(default)]
+        connection_string: Option<String>,
+        /// ...or build it from host/port/service_name or sid.
+        #[serde(default)]
+        host: Option<String>,
+        #[serde(default)]
+        port: Option<u16>,
+        #[serde(default)]
+        service_name: Option<String>,
+        #[serde(default)]
+        sid: Option<String>,
+
         username: String,
         password: Option<String>,
+        #[serde(default, with = "humantime_serde")]
+        connect_timeout: Option<Duration>,
         query: String,
         expected_scalar: Option<String>,
         expected_contains: Option<String>,

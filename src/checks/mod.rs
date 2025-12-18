@@ -1,5 +1,5 @@
 use crate::config::{CheckConfig, CheckSpec};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
 pub mod http;
 pub mod http_json;
@@ -7,6 +7,9 @@ pub mod tcp;
 pub mod postgres;
 pub mod tls_cert;
 pub mod tls_client;
+mod json_path;
+pub mod file;
+pub mod oracle;
 
 pub async fn run_check(cfg: &CheckConfig) -> Result<()> {
     match &cfg.spec {
@@ -15,8 +18,7 @@ pub async fn run_check(cfg: &CheckConfig) -> Result<()> {
         CheckSpec::HttpJson { .. } => http_json::run(cfg).await,
         CheckSpec::TlsCert { .. } => tls_cert::run(cfg).await,
         CheckSpec::Postgres { .. } => postgres::run(cfg).await,
-
-        // Still planned / feature-gated.
-        CheckSpec::Oracle { .. } => Err(anyhow!("oracle check is not implemented yet")),
+        CheckSpec::File { .. } => file::run(cfg).await,
+        CheckSpec::Oracle { .. } => oracle::run(cfg).await,
     }
 }

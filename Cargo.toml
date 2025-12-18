@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 axum = "0.8"
-tokio = { version = "1.38", features = ["rt-multi-thread", "macros", "time"] }
+tokio = { version = "1.38", features = ["rt-multi-thread", "macros", "time", "fs"] }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml_ng = "0.10"
@@ -22,6 +22,9 @@ askama = "0.14"
 tower-http = { version = "0.6", features = ["fs"] }
 url = "2.5"
 
+# Oracle check (feature-gated; requires Oracle client libraries at runtime).
+oracle = { version = "0.6", optional = true }
+
 # Postgres + TLS-certificate checks
 tokio-postgres = "0.7"
 tokio-postgres-rustls = "0.13"
@@ -34,7 +37,11 @@ prometheus = "0.14"
 once_cell = "1.19"
 futures = "0.3"
 
-tracing = "0.1"
+tracing = "0.1.44"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 time = { version = "0.3.44", features = ["formatting", "serde"] }
 x509-parser = "0.18.0"
+
+[features]
+default = []
+oracle = ["dep:oracle"]
