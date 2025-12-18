@@ -208,6 +208,32 @@ impl AppState {
     }
 
     pub fn uptime(&self) -> String {
-        humantime::format_duration(self.start.elapsed()).to_string()
+        // Human-friendly uptime for UI. Keep it stable and readable for L2.
+        // Examples: "7.428 s", "3m 12s", "2h 05m", "1d 4h".
+        let d = self.start.elapsed();
+        let secs = d.as_secs_f64();
+
+        if secs < 60.0 {
+            return format!("{:.3} s", secs);
+        }
+
+        if secs < 60.0 * 60.0 {
+            let total = secs.floor() as u64;
+            let m = total / 60;
+            let s = total % 60;
+            return format!("{m}m {s}s");
+        }
+
+        if secs < 60.0 * 60.0 * 24.0 {
+            let total = secs.floor() as u64;
+            let h = total / 3600;
+            let m = (total % 3600) / 60;
+            return format!("{h}h {m:02}m");
+        }
+
+        let total = secs.floor() as u64;
+        let days = total / 86_400;
+        let h = (total % 86_400) / 3600;
+        format!("{days}d {h}h")
     }
 }

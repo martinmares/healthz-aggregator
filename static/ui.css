@@ -15,6 +15,69 @@
   overflow-wrap: anywhere;
 }
 
+/* Table sizing: let "Check" column shrink/grow naturally (no hard-coded width),
+   while long values (error/labels) are ellipsized via .hc-truncate. */
+.hc-table {
+  table-layout: auto;
+  width: 100%;
+}
+
+/* Columns that should never wrap (shrink-to-fit). */
+th.hc-col-check, td.hc-col-check { white-space: nowrap; width: 1%; }
+th.hc-col-last-run, td.hc-col-last-run { white-space: nowrap; width: 1%; }
+th.hc-col-duration, td.hc-col-duration { white-space: nowrap; width: 1%; }
+th.hc-col-actions, td.hc-col-actions { white-space: nowrap; width: 1%; text-align: right; }
+
+/* One-line truncation helper (ellipsis). */
+.hc-truncate {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Check cell layout: name + badges (kept on one line). */
+.hc-check-main {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+}
+.hc-check-name {
+  font-family: var(--tblr-font-monospace, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+  white-space: nowrap;
+}
+
+/* Error cell: truncate + copy button without forcing horizontal scroll. */
+.hc-error-wrap {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  min-width: 0;
+}
+.hc-error-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Dark tooltip tuned for long error strings. */
+.tooltip.hc-tooltip .tooltip-inner {
+  background: rgba(17, 24, 39, 0.98);
+  color: #e5e7eb;
+  max-width: 28rem;
+  text-align: left;
+  font-family: var(--tblr-font-monospace, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+  white-space: pre-wrap;
+  padding: .5rem .75rem;
+  border-radius: .5rem;
+  box-shadow: 0 0.75rem 2rem rgba(0, 0, 0, .55);
+}
+.tooltip.hc-tooltip .tooltip-arrow::before {
+  border-top-color: rgba(17, 24, 39, 0.98);
+  border-bottom-color: rgba(17, 24, 39, 0.98);
+  border-left-color: rgba(17, 24, 39, 0.98);
+  border-right-color: rgba(17, 24, 39, 0.98);
+}
+
 /* Slightly tighter table cells for status grids */
 .table td, .table th {
   vertical-align: top;

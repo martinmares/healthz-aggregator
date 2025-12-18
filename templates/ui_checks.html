@@ -1,0 +1,134 @@
+<div
+  class="card"
+  id="checks-card"
+  hx-get="/ui/fragment/checks"
+  hx-trigger="every {{ refresh_hx }}"
+  hx-swap="outerHTML"
+>
+  <div class="card-header">
+    <div>
+      <h3 class="card-title">
+        <i class="ti ti-activity me-2"></i>
+        Checks
+      </h3>
+      <div class="text-muted small">
+        total={{ summary_total }}, up={{ summary_up }}, warn={{ summary_warn }}, down={{ summary_down }}, critical_down={{ summary_critical_down }}
+      </div>
+    </div>
+
+    <div class="card-actions">
+      <a class="btn btn-outline-secondary btn-sm" href="/healthz/details" target="_blank" rel="noopener">
+        <i class="ti ti-code me-1"></i>Details
+      </a>
+      <a class="btn btn-outline-secondary btn-sm" href="/metrics" target="_blank" rel="noopener">
+        <i class="ti ti-chart-line me-1"></i>Metrics
+      </a>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-vcenter table-hover mb-0 hc-table">
+      <thead>
+        <tr>
+          <th class="hc-col-check">Check</th>
+          <th class="hc-col-last-run">Last run</th>
+          <th class="hc-col-duration">Duration</th>
+          <th class="hc-col-error">Error</th>
+          <th class="hc-col-labels">Labels</th>
+          <th class="hc-col-actions"></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for c in checks %}
+        <tr>
+          <td class="hc-col-check">
+            <div class="hc-check-main">
+              <span class="hc-check-name">{{ c.name }}</span>
+
+              {% if c.status == "up" %}
+                <span class="badge bg-success-lt">UP</span>
+              {% else if c.status == "warn" %}
+                <span class="badge bg-warning-lt">WARN</span>
+              {% else %}
+                <span class="badge bg-danger-lt">DOWN</span>
+              {% endif %}
+
+              {% if c.critical %}
+                <span class="badge bg-primary-lt">critical</span>
+              {% endif %}
+            </div>
+          </td>
+
+          <td class="hc-col-last-run">
+            {% if c.last_run != "-" %}
+              <time class="font-monospace js-localtime" datetime="{{ c.last_run }}">{{ c.last_run }}</time>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="hc-col-duration"><span class="font-monospace">{{ c.duration }}</span></td>
+          <td class="hc-col-error">
+            {% if c.error != "" %}
+              <div class="hc-error-wrap">
+                <span
+                  class="text-danger hc-truncate hc-error-text"
+                  data-bs-toggle="tooltip"
+                  data-bs-placement="top"
+                  data-bs-container="body"
+                  title="{{ c.error }}"
+                >{{ c.error_short }}</span>
+
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary btn-sm btn-icon hc-copy-btn"
+                  data-copy-text="{{ c.error }}"
+                  aria-label="Copy error"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="18" height="18" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                    <rect x="8" y="8" width="12" height="12" rx="2" />
+                    <path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2" />
+                  </svg>
+                </button>
+              </div>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="hc-col-labels">
+            {% if c.labels != "" %}
+              <span
+                class="font-monospace hc-truncate"
+                data-bs-toggle="tooltip"
+                data-bs-placement="top"
+                data-bs-container="body"
+                title="{{ c.labels }}"
+              >{{ c.labels_short }}</span>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+
+          <td class="hc-col-actions">
+            <button
+              type="button"
+              class="btn btn-outline-secondary btn-sm btn-check-detail"
+              data-check-name="{{ c.name }}"
+              data-bs-toggle="modal"
+              data-bs-target="#check-detail-modal"
+              aria-label="Show details"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="icon me-1" width="18" height="18" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+                <path d="M21 12c-2.4 4-5.6 6-9 6s-6.6-2-9-6c2.4-4 5.6-6 9-6s6.6 2 9 6" />
+              </svg>
+              Detail
+            </button>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

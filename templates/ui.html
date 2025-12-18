@@ -30,15 +30,26 @@
           </div>
 
           <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-            {% if aggregate_ok %}
-              <span class="badge bg-success-lt">aggregate: <span class="fw-semibold">OK</span></span>
-            {% else %}
-              <span class="badge bg-danger-lt">aggregate: <span class="fw-semibold">FAILED</span></span>
-            {% endif %}
+            <div
+              id="header-badges"
+              class="d-flex align-items-center gap-2 flex-wrap"
+              hx-get="/ui/fragment/header"
+              hx-trigger="every {{ refresh_hx }}"
+              hx-swap="outerHTML"
+            >
+              {% if aggregate_ok %}
+                <span class="badge bg-success-lt">aggregate: <span class="fw-semibold">OK</span></span>
+              {% else %}
+                <span class="badge bg-danger-lt">aggregate: <span class="fw-semibold">FAILED</span></span>
+              {% endif %}
 
-            <span class="badge bg-secondary-lt">uptime: <span class="font-monospace">{{ uptime }}</span></span>
-            <span class="badge bg-secondary-lt">refresh: <span class="font-monospace">{{ refresh_interval }}</span></span>
-            <span class="badge bg-secondary-lt">updated: <span class="font-monospace">{{ now }}</span></span>
+              <span class="badge bg-secondary-lt">uptime: <span class="font-monospace">{{ uptime }}</span></span>
+              <span class="badge bg-secondary-lt">refresh: <span class="font-monospace">{{ refresh_interval }}</span></span>
+              <span class="badge bg-secondary-lt">
+                updated:
+                <time class="font-monospace js-localtime" datetime="{{ now }}">{{ now }}</time>
+              </span>
+            </div>
 
             <label class="form-check form-switch m-0 ms-2">
               <input class="form-check-input" id="theme-toggle" type="checkbox" />
@@ -57,7 +68,13 @@
         <div class="row g-3">
 
           <div class="col-12">
-            <div class="card">
+            <div
+              class="card"
+              id="checks-card"
+              hx-get="/ui/fragment/checks"
+              hx-trigger="every {{ refresh_hx }}"
+              hx-swap="outerHTML"
+            >
               <div class="card-header">
                 <div>
                   <h3 class="card-title">
@@ -80,48 +97,105 @@
               </div>
 
               <div class="table-responsive">
-                <table class="table table-vcenter table-hover mb-0">
+                <table class="table table-vcenter table-hover mb-0 hc-table">
                   <thead>
                     <tr>
-                      <th>Check</th>
-                      <th>Status</th>
-                      <th>Critical</th>
-                      <th>Last run</th>
-                      <th>Duration</th>
-                      <th>Error</th>
-                      <th>Labels</th>
+                      <th class="hc-col-check">Check</th>
+                      <th class="hc-col-last-run">Last run</th>
+                      <th class="hc-col-duration">Duration</th>
+                      <th class="hc-col-error">Error</th>
+                      <th class="hc-col-labels">Labels</th>
+                      <th class="hc-col-actions"></th>
                     </tr>
                   </thead>
                   <tbody>
                   {% for c in checks %}
                     <tr>
-                      <td><span class="font-monospace">{{ c.name }}</span></td>
-                      <td>
-                        {% if c.status == "up" %}
-                          <span class="badge bg-success-lt">UP</span>
-                        {% else if c.status == "warn" %}
-                          <span class="badge bg-warning-lt">WARN</span>
-                        {% else %}
-                          <span class="badge bg-danger-lt">DOWN</span>
-                        {% endif %}
+                      <td class="hc-col-check">
+                        <div class="hc-check-main">
+                          <span class="hc-check-name">{{ c.name }}</span>
+
+                          {% if c.status == "up" %}
+                            <span class="badge bg-success-lt">UP</span>
+                          {% else if c.status == "warn" %}
+                            <span class="badge bg-warning-lt">WARN</span>
+                          {% else %}
+                            <span class="badge bg-danger-lt">DOWN</span>
+                          {% endif %}
+
+                          {% if c.critical %}
+                            <span class="badge bg-primary-lt">critical</span>
+                          {% endif %}
+                        </div>
                       </td>
-                      <td>
-                        {% if c.critical %}
-                          <span class="badge bg-primary-lt">true</span>
-                        {% else %}
-                          <span class="badge bg-secondary-lt">false</span>
-                        {% endif %}
-                      </td>
-                      <td><span class="font-monospace">{{ c.last_run }}</span></td>
-                      <td><span class="font-monospace">{{ c.duration }}</span></td>
-                      <td class="text-break">
-                        {% if c.error != "" %}
-                          <span class="text-danger">{{ c.error }}</span>
+
+                      <td class="hc-col-last-run">
+                        {% if c.last_run != "-" %}
+                          <time class="font-monospace js-localtime" datetime="{{ c.last_run }}">{{ c.last_run }}</time>
                         {% else %}
                           <span class="text-muted">—</span>
                         {% endif %}
                       </td>
-                      <td><span class="font-monospace text-break">{{ c.labels }}</span></td>
+                      <td class="hc-col-duration"><span class="font-monospace">{{ c.duration }}</span></td>
+                      <td class="hc-col-error">
+                        {% if c.error != "" %}
+                          <div class="hc-error-wrap">
+                            <span
+                              class="text-danger hc-truncate hc-error-text"
+                              data-bs-toggle="tooltip"
+                              data-bs-placement="top"
+                              data-bs-container="body"
+                              title="{{ c.error }}"
+                            >{{ c.error_short }}</span>
+
+                            <button
+                              type="button"
+                              class="btn btn-outline-secondary btn-sm btn-icon hc-copy-btn"
+                              data-copy-text="{{ c.error }}"
+                              aria-label="Copy error"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="18" height="18" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                                <rect x="8" y="8" width="12" height="12" rx="2" />
+                                <path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2" />
+                              </svg>
+                            </button>
+                          </div>
+                        {% else %}
+                          <span class="text-muted">—</span>
+                        {% endif %}
+                      </td>
+                      <td class="hc-col-labels">
+                        {% if c.labels != "" %}
+                          <span
+                            class="font-monospace hc-truncate"
+                            data-bs-toggle="tooltip"
+                            data-bs-placement="top"
+                            data-bs-container="body"
+                            title="{{ c.labels }}"
+                          >{{ c.labels_short }}</span>
+                        {% else %}
+                          <span class="text-muted">—</span>
+                        {% endif %}
+                      </td>
+
+                      <td class="hc-col-actions">
+                        <button
+                          type="button"
+                          class="btn btn-outline-secondary btn-sm btn-check-detail"
+                          data-check-name="{{ c.name }}"
+                          data-bs-toggle="modal"
+                          data-bs-target="#check-detail-modal"
+                          aria-label="Show details"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" class="icon me-1" width="18" height="18" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                            <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+                            <path d="M21 12c-2.4 4-5.6 6-9 6s-6.6-2-9-6c2.4-4 5.6-6 9-6s6.6 2 9 6" />
+                          </svg>
+                          Detail
+                        </button>
+                      </td>
                     </tr>
                   {% endfor %}
                   </tbody>
@@ -136,7 +210,29 @@
   </div><!-- page-wrapper -->
 </div><!-- page -->
 
+<!-- Check detail modal -->
+<div class="modal fade" id="check-detail-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable" role="document">
+    <div class="modal-content shadow-lg">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="ti ti-info-circle me-2"></i>
+          <span id="check-detail-modal-title">Check details</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info py-2 mb-2">
+          Fetched from <span class="font-monospace" id="check-detail-modal-source">/healthz/details</span>.
+        </div>
+        <pre class="m-0 p-3 border rounded bg-body-tertiary font-monospace overflow-auto text-body" id="check-detail-modal-json" style="max-height: 55vh;">Loading…</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/js/tabler.min.js"></script>
+<script src="https://unpkg.com/htmx.org@1.9.12"></script>
 <script src="/static/ui.js"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-use axum::{Json, http::StatusCode, response::IntoResponse};
+use axum::{Json, extract::Path, http::StatusCode, response::IntoResponse};
 use serde::Serialize;
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -59,4 +59,15 @@ pub async fn details_healthz(state: Arc<AppState>) -> impl IntoResponse {
     };
 
     (StatusCode::OK, Json(body))
+}
+
+pub async fn details_healthz_one(
+    state: Arc<AppState>,
+    Path(check_name): Path<String>,
+) -> impl IntoResponse {
+    let results = state.snapshot(); // nebo líp: state.get(&check_name)
+    if let Some(r) = results.into_iter().find(|x| x.name == check_name) {
+        return (StatusCode::OK, Json(r)).into_response();
+    }
+    (StatusCode::NOT_FOUND, "check not found").into_response()
 }

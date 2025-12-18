@@ -42,7 +42,8 @@ async fn run_once(state: Arc<AppState>, semaphore: Option<Arc<Semaphore>>) {
             let (status, error) = match res {
                 Ok(_) => (CheckStatus::Up, None),
                 Err(e) => {
-                    let s = e.to_string();
+                    // Keep the whole error chain (hugely useful for TLS/DB failures)
+                    let s = format!("{:#}", e);
                     if cfg.critical {
                         (CheckStatus::Down, Some(s))
                     } else {

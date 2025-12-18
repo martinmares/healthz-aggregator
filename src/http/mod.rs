@@ -1,10 +1,10 @@
-use axum::{routing::get, Router};
+use axum::{Router, routing::get};
 use std::sync::Arc;
 use tower_http::services::ServeDir;
 
-use crate::http::healthz::{aggregate_healthz, details_healthz, self_healthz};
-use crate::http::metrics::{metrics_handler, Metrics};
-use crate::http::ui::ui_handler;
+use crate::http::healthz::{aggregate_healthz, details_healthz, details_healthz_one, self_healthz};
+use crate::http::metrics::{Metrics, metrics_handler};
+use crate::http::ui::{ui_checks_fragment_handler, ui_handler, ui_header_fragment_handler};
 use crate::state::AppState;
 
 pub mod healthz;
@@ -16,7 +16,6 @@ pub fn router(state: Arc<AppState>, metrics: Arc<Metrics>) -> Router {
         // self health
         .route("/healthz", get(self_healthz))
         .route("/healthz/self", get(self_healthz))
-
         // aggregated health
         .route(
             "/healthz/aggregate",
@@ -32,7 +31,6 @@ pub fn router(state: Arc<AppState>, metrics: Arc<Metrics>) -> Router {
                 move || aggregate_healthz(state.clone())
             }),
         )
-
         // common k8s-friendly alias names
         .route(
             "/multi-healthz",
@@ -48,7 +46,6 @@ pub fn router(state: Arc<AppState>, metrics: Arc<Metrics>) -> Router {
                 move || aggregate_healthz(state.clone())
             }),
         )
-
         // details (JSON)
         .route(
             "/healthz/details",
@@ -57,7 +54,13 @@ pub fn router(state: Arc<AppState>, metrics: Arc<Metrics>) -> Router {
                 move || details_healthz(state.clone())
             }),
         )
-
+        .route(
+            "/healthz/details/{check_name}",
+            get({
+                let state = state.clone();
+                move |path| details_healthz_one(state.clone(), path)
+            }),
+        )
         // UI (HTML)
         .route(
             "/ui",
@@ -66,7 +69,21 @@ pub fn router(state: Arc<AppState>, metrics: Arc<Metrics>) -> Router {
                 move || ui_handler(state.clone())
             }),
         )
-
+        // UI fragments (HTMX)
+        .route(
+            "/ui/fragment/header",
+            get({
+                let state = state.clone();
+                move || ui_header_fragment_handler(state.clone())
+            }),
+        )
+        .route(
+            "/ui/fragment/checks",
+            get({
+                let state = state.clone();
+                move || ui_checks_fragment_handler(state.clone())
+            }),
+        )
         // metrics (Prometheus)
         .route(
             "/metrics",
@@ -76,7 +93,6 @@ pub fn router(state: Arc<AppState>, metrics: Arc<Metrics>) -> Router {
                 move || metrics_handler(state.clone(), metrics.clone())
             }),
         )
-
         // static assets for UI
         .nest_service("/static", ServeDir::new("static"))
 }

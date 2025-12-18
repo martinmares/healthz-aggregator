@@ -68,15 +68,23 @@ pub fn client_config(tls_verify: bool) -> Result<Arc<ClientConfig>> {
     let mut roots = RootCertStore::empty();
     let native_certs = rustls_native_certs::load_native_certs();
 
-    if native_certs.errors.is_empty() {
-        for e in native_certs.errors {
-            tracing::warn!(error = %e, "failed to load native certs; TLS verification may fail");
+    // Always try to add whatever we got; log errors if there are any.
+    if !native_certs.errors.is_empty() {
+        for e in &native_certs.errors {
+            tracing::warn!(error = %e, "failed to load a native cert");
         }
-    } else {
-        for cert in native_certs.certs {
-            // Ignore individual parse failures; keep going.
-            let _ = roots.add(cert);
-        }
+    }
+
+    for cert in native_certs.certs {
+        // Ignore individual parse failures; keep going.
+        let _ = roots.add(cert);
+    }
+
+    // If verification is requested but we have no roots, fail early with a clear message.
+    if tls_verify && roots.is_empty() {
+        return Err(anyhow!(
+            "no root certificates loaded from the OS; set tls_verify: false or install CA roots"
+        ));
     }
 
     // Builder flow in rustls 0.23:

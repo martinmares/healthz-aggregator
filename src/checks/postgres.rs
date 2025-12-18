@@ -1,65 +1,32 @@
-use super::tls_client;
 use crate::config::{CheckConfig, CheckSpec};
 use anyhow::{Context, Result, anyhow};
 use regex::Regex;
 use std::time::Duration;
-use tokio_postgres::{Row, types::ToSql};
+use tokio_postgres::{NoTls, Row, types::ToSql};
+use tokio_postgres_rustls::MakeRustlsConnect;
+
+use super::tls_client;
 
 fn scalar_to_string(row: &Row) -> Result<String> {
-    // Try common scalar shapes in order.
-    if let Ok(v) = row.try_get::<usize, Option<String>>(0) {
-        if let Some(v) = v {
-            return Ok(v);
-        }
-    }
-
     if let Ok(v) = row.try_get::<usize, String>(0) {
         return Ok(v);
     }
-    if let Ok(v) = row.try_get::<usize, Option<i64>>(0) {
-        if let Some(v) = v {
-            return Ok(v.to_string());
-        }
+    if let Ok(v) = row.try_get::<usize, &str>(0) {
+        return Ok(v.to_string());
     }
     if let Ok(v) = row.try_get::<usize, i64>(0) {
         return Ok(v.to_string());
     }
-    if let Ok(v) = row.try_get::<usize, Option<i32>>(0) {
-        if let Some(v) = v {
-            return Ok(v.to_string());
-        }
-    }
     if let Ok(v) = row.try_get::<usize, i32>(0) {
         return Ok(v.to_string());
-    }
-    if let Ok(v) = row.try_get::<usize, Option<i16>>(0) {
-        if let Some(v) = v {
-            return Ok(v.to_string());
-        }
-    }
-    if let Ok(v) = row.try_get::<usize, i16>(0) {
-        return Ok(v.to_string());
-    }
-    if let Ok(v) = row.try_get::<usize, Option<f64>>(0) {
-        if let Some(v) = v {
-            return Ok(v.to_string());
-        }
     }
     if let Ok(v) = row.try_get::<usize, f64>(0) {
         return Ok(v.to_string());
     }
-    if let Ok(v) = row.try_get::<usize, Option<bool>>(0) {
-        if let Some(v) = v {
-            return Ok(v.to_string());
-        }
-    }
     if let Ok(v) = row.try_get::<usize, bool>(0) {
         return Ok(v.to_string());
     }
-
-    Err(anyhow!(
-        "unable to convert first column to string (try casting in SQL, e.g. SELECT value::text)"
-    ))
+    Err(anyhow!("unsupported scalar type in first column"))
 }
 
 pub async fn run(cfg: &CheckConfig) -> Result<()> {
@@ -70,7 +37,7 @@ pub async fn run(cfg: &CheckConfig) -> Result<()> {
         username,
         password,
         connect_timeout,
-        tls_enabled,
+        tls,
         ignore_invalid_cert,
         query,
         expected_scalar,
@@ -91,100 +58,96 @@ pub async fn run(cfg: &CheckConfig) -> Result<()> {
             expected_contains,
             expected_regex,
         } => (
-            host.clone(),
+            host.as_str(),
             port.unwrap_or(5432),
-            database.clone(),
-            username.clone(),
-            password.clone(),
+            database.as_str(),
+            username.as_str(),
+            password.as_deref(),
             connect_timeout.unwrap_or(Duration::from_secs(5)),
             tls.unwrap_or(false),
-            ignore_invalid_cert.unwrap_or(false),
-            query.clone(),
-            expected_scalar.clone(),
-            expected_contains.clone(),
-            expected_regex.clone(),
+            *ignore_invalid_cert,
+            query.as_str(),
+            expected_scalar.as_deref(),
+            expected_contains.as_deref(),
+            expected_regex.as_deref(),
         ),
         _ => return Err(anyhow!("invalid check spec for postgres")),
     };
 
-    let mut pg_cfg = tokio_postgres::Config::new();
-    pg_cfg.host(&host);
-    pg_cfg.port(port);
-    pg_cfg.dbname(&database);
-    pg_cfg.user(&username);
-    pg_cfg.connect_timeout(connect_timeout);
+    let mut pgcfg = tokio_postgres::Config::new();
+    pgcfg.host(host);
+    pgcfg.port(port);
+    pgcfg.dbname(database);
+    pgcfg.user(username);
     if let Some(pw) = password {
-        pg_cfg.password(pw);
+        pgcfg.password(pw);
     }
 
-    // Connect, but don't try to store the typed connection (TLS stream differs from NoTls).
-    let client = if tls_enabled {
-        let tls_verify = !ignore_invalid_cert;
+    let client = if tls {
+        let tls_verify = !ignore_invalid_cert.unwrap_or(false);
         let tls_cfg = tls_client::client_config(tls_verify)?;
-        let tls = tokio_postgres_rustls::MakeRustlsConnect::new(tls_cfg.as_ref().clone());
+        let tls = MakeRustlsConnect::new(tls_cfg.as_ref().clone());
 
-        let (client, connection) = tokio::time::timeout(connect_timeout, pg_cfg.connect(tls))
+        let (client, connection) = tokio::time::timeout(connect_timeout, pgcfg.connect(tls))
             .await
-            .map_err(|_| anyhow!("postgres connect timeout"))?
+            .map_err(|_| anyhow!("postgres connect timeout after {:?}", connect_timeout))?
             .context("postgres connect failed")?;
 
         tokio::spawn(async move {
             if let Err(e) = connection.await {
-                tracing::warn!(error = %e, "postgres connection task ended with error");
+                tracing::warn!(error = %e, "postgres connection error");
             }
         });
 
         client
     } else {
-        let (client, connection) =
-            tokio::time::timeout(connect_timeout, pg_cfg.connect(tokio_postgres::NoTls))
-                .await
-                .map_err(|_| anyhow!("postgres connect timeout"))?
-                .context("postgres connect failed")?;
+        let (client, connection) = tokio::time::timeout(connect_timeout, pgcfg.connect(NoTls))
+            .await
+            .map_err(|_| anyhow!("postgres connect timeout after {:?}", connect_timeout))?
+            .context("postgres connect failed")?;
 
         tokio::spawn(async move {
             if let Err(e) = connection.await {
-                tracing::warn!(error = %e, "postgres connection task ended with error");
+                tracing::warn!(error = %e, "postgres connection error");
             }
         });
 
         client
     };
 
-    // Query timeout: reuse connect_timeout for now (keeps config small & predictable).
-    let query_timeout = connect_timeout;
-
     let params: &[&(dyn ToSql + Sync)] = &[];
-
-    let row_opt = tokio::time::timeout(query_timeout, client.query_opt(&query, params))
+    let row_opt = tokio::time::timeout(connect_timeout, client.query_opt(query, params))
         .await
-        .map_err(|_| anyhow!("postgres query timeout"))?
+        .map_err(|_| anyhow!("postgres query timeout after {:?}", connect_timeout))?
         .context("postgres query failed")?;
 
-    let row = row_opt.ok_or_else(|| anyhow!("postgres query returned no rows"))?;
-    let value = scalar_to_string(&row)?;
+    let Some(row) = row_opt else {
+        return Err(anyhow!("postgres query returned no rows"));
+    };
 
-    if let Some(expect) = expected_scalar {
-        if value != expect {
+    let got = scalar_to_string(&row)?;
+
+    if let Some(exp) = expected_scalar {
+        if got != exp {
             return Err(anyhow!(
-                "postgres scalar mismatch (got {value:?}, expected {expect:?})"
+                "postgres scalar mismatch (got '{got}', expected '{exp}')"
             ));
         }
     }
 
-    if let Some(substr) = expected_contains {
-        if !value.contains(&substr) {
+    if let Some(cont) = expected_contains {
+        if !got.contains(cont) {
             return Err(anyhow!(
-                "postgres scalar missing substring (got {value:?}, expected to contain {substr:?})"
+                "postgres scalar does not contain '{cont}' (got '{got}')"
             ));
         }
     }
 
     if let Some(re) = expected_regex {
-        let rx = Regex::new(&re).context("compiling postgres expected_regex")?;
-        if !rx.is_match(&value) {
+        let rx = Regex::new(re).context("compiling expected_regex")?;
+        if !rx.is_match(&got) {
             return Err(anyhow!(
-                "postgres scalar regex did not match (got {value:?}, regex {re:?})"
+                "postgres scalar regex did not match (got '{got}', re '{re}')"
             ));
         }
     }
