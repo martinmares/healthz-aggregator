@@ -14,16 +14,26 @@ pub struct ServerConfig {
     /// Bind address for HTTP server, e.g. "0.0.0.0:8998"
     pub bind: String,
 }
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct GlobalConfig {
+    /// How often to refresh the cached check results.
     #[serde(with = "humantime_serde")]
     pub refresh_interval: Duration,
+
+    /// Optional concurrency limit for running checks.
+    /// If not set, all checks run concurrently.
+    #[serde(default)]
+    pub max_concurrency: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct MetricsConfig {
     pub namespace: Option<String>,
     pub name: Option<String>,
+
+    /// Global labels applied to all metrics (env/cluster/...).
+    /// These are also merged into each check's labels (check-level labels override).
     pub static_labels: Option<HashMap<String, String>>,
 }
 
@@ -31,9 +41,11 @@ pub struct MetricsConfig {
 pub struct CheckConfig {
     pub name: String,
 
+    /// If false: a failing check becomes WARN (does not fail the aggregate health).
     #[serde(default = "default_true")]
     pub critical: bool,
 
+    /// Per-check labels. Merged with metrics.static_labels.
     #[serde(default)]
     pub static_labels: HashMap<String, String>,
 
@@ -44,9 +56,18 @@ pub struct CheckConfig {
 #[derive(Debug, Deserialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CheckSpec {
+    Tcp {
+        host: String,
+        port: u16,
+
+        #[serde(with = "humantime_serde", default)]
+        timeout: Option<Duration>,
+    },
+
     Http {
         url: String,
         method: Option<String>,
+        headers: Option<HashMap<String, String>>,
 
         #[serde(with = "humantime_serde", default)]
         timeout: Option<Duration>,
@@ -54,6 +75,81 @@ pub enum CheckSpec {
         tls_verify: Option<bool>,
         status_code: Option<u16>,
         expected_body_substring: Option<String>,
+        expected_body_regex: Option<String>,
+    },
+
+    HttpJson {
+        url: String,
+        method: Option<String>,
+        headers: Option<HashMap<String, String>>,
+
+        #[serde(with = "humantime_serde", default)]
+        timeout: Option<Duration>,
+
+        tls_verify: Option<bool>,
+        status_code: Option<u16>,
+
+        /// Small JSONPath subset: $.a.b[0].c
+        json_path: Option<String>,
+
+        /// Compare extracted value as string.
+        expected_value: Option<String>,
+
+        /// Match extracted value as string.
+        expected_regex: Option<String>,
+    },
+
+    /// TLS certificate expiry check (TCP + TLS handshake + read leaf cert).
+    /// Note: Implementation depends on TLS stack; keep config stable.
+    TlsCert {
+        /// Either host/port or url may be provided.
+        host: Option<String>,
+        port: Option<u16>,
+        url: Option<String>,
+
+        /// SNI override (defaults to host).
+        sni: Option<String>,
+
+        #[serde(with = "humantime_serde", default)]
+        timeout: Option<Duration>,
+
+        tls_verify: Option<bool>,
+
+        /// Mark DOWN/WARN if remaining days < min_days_remaining.
+        min_days_remaining: Option<f64>,
+    },
+
+    /// Postgres SQL check (planned; keep schema compatible with legacy Ruby config).
+    Postgres {
+        host: String,
+        port: Option<u16>,
+        database: String,
+        username: String,
+        password: Option<String>,
+
+        #[serde(with = "humantime_serde", default)]
+        connect_timeout: Option<Duration>,
+
+        tls: Option<bool>,
+        ignore_invalid_cert: Option<bool>,
+
+        query: String,
+
+        /// Compare first column of first row as string.
+        expected_scalar: Option<String>,
+        expected_contains: Option<String>,
+        expected_regex: Option<String>,
+    },
+
+    /// Oracle SQL check (planned; likely feature-gated).
+    Oracle {
+        connection_string: String,
+        username: String,
+        password: Option<String>,
+        query: String,
+        expected_scalar: Option<String>,
+        expected_contains: Option<String>,
+        expected_regex: Option<String>,
     },
 }
 

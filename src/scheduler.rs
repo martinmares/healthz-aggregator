@@ -4,81 +4,66 @@ use crate::{
 };
 use futures::future::join_all;
 use std::{sync::Arc, time::Instant};
+use tokio::sync::Semaphore;
 
-pub fn spawn(state: Arc<AppState>, interval: std::time::Duration) {
-    tracing::info!(
-        interval = ?interval,
-        "scheduler started"
-    );
+pub fn spawn(state: Arc<AppState>, interval: std::time::Duration, max_concurrency: Option<usize>) {
+    tracing::info!(interval = ?interval, max_concurrency = ?max_concurrency, "scheduler started");
+
+    let semaphore = max_concurrency.map(|n| Arc::new(Semaphore::new(n)));
 
     tokio::spawn(async move {
         loop {
-            run_once(state.clone()).await;
-
-            tracing::info!(
-                interval = ?interval,
-                "scheduler sleeping"
-            );
-
+            run_once(state.clone(), semaphore.clone()).await;
             tokio::time::sleep(interval).await;
         }
     });
 }
 
-async fn run_once(state: Arc<AppState>) {
-    tracing::info!("scheduler tick");
+async fn run_once(state: Arc<AppState>, semaphore: Option<Arc<Semaphore>>) {
+    tracing::debug!("scheduler tick");
+
     let futures = state.check_configs().into_iter().map(|cfg| {
         let state = state.clone();
-        async move {
-            let start = Instant::now();
+        let semaphore = semaphore.clone();
 
-            tracing::info!(
-                check = %cfg.name,
-                "check started"
-            );
+        async move {
+            // Optional concurrency limit
+            let _permit = match semaphore {
+                Some(ref sem) => Some(sem.acquire().await.expect("semaphore closed")),
+                None => None,
+            };
+
+            let start = Instant::now();
+            tracing::info!(check = %cfg.name, "check started");
 
             let res = checks::run_check(&cfg).await;
             let duration = start.elapsed();
 
-            match &res {
-                Ok(_) => tracing::info!(
-                    check = %cfg.name,
-                    duration = ?duration,
-                    "check finished OK"
-                ),
-                Err(err) => tracing::warn!(
-                    check = %cfg.name,
-                    duration = ?duration,
-                    error = %err,
-                    "check failed"
-                ),
-            };
-
-            let result = match res {
-                Ok(_) => CheckResult {
-                    name: cfg.name.clone(),
-                    status: CheckStatus::Up,
-                    critical: cfg.critical,
-                    last_run: Some(std::time::SystemTime::now()),
-                    duration: Some(duration),
-                    error: None,
-                    labels: cfg.static_labels.clone(),
-                },
-                Err(e) => CheckResult {
-                    name: cfg.name.clone(),
-                    status: if cfg.critical {
-                        CheckStatus::Down
+            let (status, error) = match res {
+                Ok(_) => (CheckStatus::Up, None),
+                Err(e) => {
+                    let s = e.to_string();
+                    if cfg.critical {
+                        (CheckStatus::Down, Some(s))
                     } else {
-                        CheckStatus::Warn
-                    },
-                    critical: cfg.critical,
-                    last_run: Some(std::time::SystemTime::now()),
-                    duration: Some(duration),
-                    error: Some(e.to_string()),
-                    labels: cfg.static_labels.clone(),
-                },
+                        (CheckStatus::Warn, Some(s))
+                    }
+                }
             };
 
+            let labels = state.labels_for_check(&cfg);
+
+            let result = CheckResult {
+                name: cfg.name.clone(),
+                status,
+                critical: cfg.critical,
+                last_run: Some(std::time::SystemTime::now()),
+                duration: Some(duration),
+                error,
+                labels,
+            };
+
+            tracing::info!(check = %cfg.name, status = ?result.status, duration = ?duration, "check finished");
             state.update(result);
         }
     });

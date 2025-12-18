@@ -7,7 +7,7 @@ mod state;
 use crate::{config::Config, http::metrics::Metrics, state::AppState};
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tracing_subscriber::{EnvFilter, fmt};
+use tracing_subscriber::{fmt, EnvFilter};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -22,7 +22,11 @@ async fn main() -> anyhow::Result<()> {
     let cfg = Config::load()?;
     let state = Arc::new(AppState::new(&cfg));
 
-    scheduler::spawn(state.clone(), cfg.global.refresh_interval);
+    scheduler::spawn(
+        state.clone(),
+        cfg.global.refresh_interval,
+        cfg.global.max_concurrency,
+    );
 
     let metrics_cfg = cfg
         .metrics
@@ -33,15 +37,13 @@ async fn main() -> anyhow::Result<()> {
             static_labels: None,
         });
 
-    let metrics = Arc::new(Metrics::new(&metrics_cfg));
+    let metrics = Arc::new(Metrics::new(&metrics_cfg, &cfg.checks));
+
     let app = http::router(state, metrics);
     let bind_addr = &cfg.server.bind;
     let listener = TcpListener::bind(bind_addr).await?;
 
-    tracing::info!(
-        bind_addr = %bind_addr,
-        "healthz-aggregator HTTP server started"
-    );
+    tracing::info!(bind_addr = %bind_addr, "healthz-aggregator HTTP server started");
 
     axum::serve(listener, app).await?;
 

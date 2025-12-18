@@ -23,12 +23,17 @@ pub struct CheckResult {
     pub last_run: Option<SystemTime>,
     pub duration: Option<Duration>,
     pub error: Option<String>,
+
+    /// Merged labels: metrics.static_labels + check.static_labels (check overrides).
+    /// Keys are sanitized to Prometheus label name rules.
     pub labels: HashMap<String, String>,
 }
 
 pub struct AppState {
-    #[allow(dead_code)]
     start: Instant,
+    refresh_interval: Duration,
+
+    global_labels: HashMap<String, String>,
     checks: Vec<CheckConfig>,
     results: RwLock<HashMap<String, CheckResult>>,
 }
@@ -42,10 +47,51 @@ pub struct AggregateSummary {
     pub critical_down: usize,
 }
 
+fn sanitize_label_name(name: &str) -> String {
+    let mut out: String = name
+        .trim()
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+
+    if out.is_empty() {
+        return "_".to_string();
+    }
+
+    let first = out.chars().next().unwrap();
+    if !(first.is_ascii_alphabetic() || first == '_') {
+        out.insert(0, '_');
+    }
+    out
+}
+
 impl AppState {
     pub fn new(cfg: &Config) -> Self {
+        let refresh_interval = cfg.global.refresh_interval;
+
+        let mut global_labels = cfg
+            .metrics
+            .as_ref()
+            .and_then(|m| m.static_labels.clone())
+            .unwrap_or_default();
+
+        // sanitize global label keys
+        let global_labels: HashMap<String, String> = global_labels
+            .drain()
+            .map(|(k, v)| (sanitize_label_name(&k), v))
+            .collect();
+
         let mut map = HashMap::new();
         for c in &cfg.checks {
+            let labels = Self::merge_labels(&global_labels, &c.static_labels);
+
             map.insert(
                 c.name.clone(),
                 CheckResult {
@@ -55,16 +101,41 @@ impl AppState {
                     last_run: None,
                     duration: None,
                     error: Some("not yet executed".into()),
-                    labels: c.static_labels.clone(),
+                    labels,
                 },
             );
         }
 
         Self {
             start: Instant::now(),
+            refresh_interval,
+            global_labels,
             checks: cfg.checks.clone(),
             results: RwLock::new(map),
         }
+    }
+
+    pub fn refresh_interval(&self) -> Duration {
+        self.refresh_interval
+    }
+
+    pub fn global_labels(&self) -> HashMap<String, String> {
+        self.global_labels.clone()
+    }
+
+    pub fn merge_labels(
+        global: &HashMap<String, String>,
+        per_check: &HashMap<String, String>,
+    ) -> HashMap<String, String> {
+        let mut out = global.clone();
+        for (k, v) in per_check {
+            out.insert(sanitize_label_name(k), v.clone());
+        }
+        out
+    }
+
+    pub fn labels_for_check(&self, cfg: &CheckConfig) -> HashMap<String, String> {
+        Self::merge_labels(&self.global_labels, &cfg.static_labels)
     }
 
     pub fn check_configs(&self) -> Vec<CheckConfig> {

@@ -1,0 +1,21 @@
+/* Minimal UI tweaks shared across projects */
+
+/* Make text selection visible in dark inputs (some themes make it too subtle) */
+::selection {
+  background: rgba(var(--tblr-primary-rgb, var(--bs-primary-rgb)), .35);
+  color: var(--bs-body-color);
+}
+::-moz-selection {
+  background: rgba(var(--tblr-primary-rgb, var(--bs-primary-rgb)), .35);
+  color: var(--bs-body-color);
+}
+
+.text-break {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* Slightly tighter table cells for status grids */
+.table td, .table th {
+  vertical-align: top;
+}
