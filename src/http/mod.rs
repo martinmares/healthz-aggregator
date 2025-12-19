@@ -4,11 +4,12 @@ use tower_http::services::ServeDir;
 
 use crate::http::healthz::{aggregate_healthz, details_healthz, details_healthz_one, self_healthz};
 use crate::http::metrics::{Metrics, metrics_handler};
-use crate::http::ui::{ui_checks_fragment_handler, ui_handler, ui_header_fragment_handler};
+use crate::http::ui::{ui_handler, ui_snapshot_handler};
 use crate::state::AppState;
 
 pub mod healthz;
 pub mod metrics;
+pub mod static_assets;
 pub mod ui;
 
 pub fn router(state: Arc<AppState>, metrics: Arc<Metrics>) -> Router {
@@ -69,19 +70,12 @@ pub fn router(state: Arc<AppState>, metrics: Arc<Metrics>) -> Router {
                 move || ui_handler(state.clone())
             }),
         )
-        // UI fragments (HTMX)
+        // UI data (JSON)
         .route(
-            "/ui/fragment/header",
+            "/ui/api/snapshot",
             get({
                 let state = state.clone();
-                move || ui_header_fragment_handler(state.clone())
-            }),
-        )
-        .route(
-            "/ui/fragment/checks",
-            get({
-                let state = state.clone();
-                move || ui_checks_fragment_handler(state.clone())
+                move || ui_snapshot_handler(state.clone())
             }),
         )
         // metrics (Prometheus)
@@ -94,5 +88,7 @@ pub fn router(state: Arc<AppState>, metrics: Arc<Metrics>) -> Router {
             }),
         )
         // static assets for UI
+        .route("/static/ui.js", get(static_assets::ui_js))
+        .route("/static/ui.css", get(static_assets::ui_css))
         .nest_service("/static", ServeDir::new("static"))
 }

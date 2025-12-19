@@ -12,17 +12,17 @@
 </head>
 
 <body>
-<div class="page" id="root">
+<div class="page" id="root" data-refresh-secs="{{ refresh_interval_secs }}">
 
-  <!-- HEADER block -->
+  <!-- HEADER block (keep layout) -->
   <div class="container-xl mt-3">
     <div class="card">
       <div class="card-body">
         <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
           <div>
             <h2 class="mb-1">
-              <i class="ti ti-heart-rate-monitor me-2"></i>
-              healthz-aggregator
+              <i class="ti ti-heartbeat me-2"></i>
+              Healthcheck Aggregator
             </h2>
             <div class="text-muted">
               Combined health checks for Kubernetes probes + UI + Prometheus.
@@ -30,24 +30,18 @@
           </div>
 
           <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-            <div
-              id="header-badges"
-              class="d-flex align-items-center gap-2 flex-wrap"
-              hx-get="/ui/fragment/header"
-              hx-trigger="every {{ refresh_hx }}"
-              hx-swap="outerHTML"
-            >
+            <div id="header-badges" class="d-flex align-items-center gap-2 flex-wrap">
               {% if aggregate_ok %}
-                <span class="badge bg-success-lt">aggregate: <span class="fw-semibold">OK</span></span>
+                <span id="badge-aggregate" class="badge bg-success-lt">aggregate: <span class="fw-semibold" id="badge-aggregate-value">OK</span></span>
               {% else %}
-                <span class="badge bg-danger-lt">aggregate: <span class="fw-semibold">FAILED</span></span>
+                <span id="badge-aggregate" class="badge bg-danger-lt">aggregate: <span class="fw-semibold" id="badge-aggregate-value">FAILED</span></span>
               {% endif %}
 
-              <span class="badge bg-secondary-lt">uptime: <span class="font-monospace">{{ uptime }}</span></span>
-              <span class="badge bg-secondary-lt">refresh: <span class="font-monospace">{{ refresh_interval }}</span></span>
+              <span class="badge bg-secondary-lt">uptime: <span class="font-monospace" id="badge-uptime">{{ uptime }}</span></span>
+              <span class="badge bg-secondary-lt">refresh: <span class="font-monospace" id="badge-refresh">{{ refresh_interval }}</span></span>
               <span class="badge bg-secondary-lt">
                 updated:
-                <time class="font-monospace js-localtime" datetime="{{ now }}">{{ now }}</time>
+                <time class="font-monospace js-localtime" id="badge-updated" datetime="{{ now }}">{{ now }}</time>
               </span>
             </div>
 
@@ -68,20 +62,14 @@
         <div class="row g-3">
 
           <div class="col-12">
-            <div
-              class="card"
-              id="checks-card"
-              hx-get="/ui/fragment/checks"
-              hx-trigger="every {{ refresh_hx }}"
-              hx-swap="outerHTML"
-            >
+            <div class="card" id="checks-card">
               <div class="card-header">
                 <div>
                   <h3 class="card-title">
                     <i class="ti ti-activity me-2"></i>
                     Checks
                   </h3>
-                  <div class="text-muted small">
+                  <div class="text-muted small" id="checks-summary">
                     total={{ summary_total }}, up={{ summary_up }}, warn={{ summary_warn }}, down={{ summary_down }}, critical_down={{ summary_critical_down }}
                   </div>
                 </div>
@@ -96,105 +84,155 @@
                 </div>
               </div>
 
-              <div class="table-responsive">
+              <!-- Filter (between header and table) -->
+              <div class="card-body py-2 border-top-0 border-bottom">
+                <div class="row g-2 align-items-center">
+                  <div class="col-auto">
+                    <label for="check-filter" class="col-form-label col-form-label-sm text-muted">Filter by name:</label>
+                  </div>
+
+                  <div class="col">
+                    <div class="input-icon">
+                      <span class="input-icon-addon">
+                        <i class="ti ti-search"></i>
+                      </span>
+                      <input
+                        id="check-filter"
+                        type="text"
+                        class="form-control form-control-sm"
+                        placeholder="Filter checks…"
+                        autocomplete="off"
+                        spellcheck="false"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="col-auto">
+                    <div class="d-flex align-items-center gap-3 flex-wrap">
+                      <label class="form-check form-check-inline m-0">
+                        <input class="form-check-input" type="checkbox" id="filter-status-up" checked />
+                        <span class="form-check-label small text-success">UP</span>
+                      </label>
+                      <label class="form-check form-check-inline m-0">
+                        <input class="form-check-input" type="checkbox" id="filter-status-warn" checked />
+                        <span class="form-check-label small text-warning">WARN</span>
+                      </label>
+                      <label class="form-check form-check-inline m-0">
+                        <input class="form-check-input" type="checkbox" id="filter-status-down" checked />
+                        <span class="form-check-label small text-danger">DOWN</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="col-auto">
+                    <button id="check-filter-clear" type="button" class="btn btn-sm btn-outline-secondary">Clear</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="table-responsive hc-table-scroll">
                 <table class="table table-vcenter table-hover mb-0 hc-table">
                   <thead>
                     <tr>
                       <th class="hc-col-check">Check</th>
-                      <th class="hc-col-last-run">Last run</th>
-                      <th class="hc-col-duration">Duration</th>
-                      <th class="hc-col-error">Error</th>
-                      <th class="hc-col-labels">Labels</th>
-                      <th class="hc-col-actions"></th>
+                      <th class="hc-col-last">Last</th>
+                      <th class="hc-col-status">Status</th>
+                      <th class="hc-col-critical">Critical</th>
+                      <th class="hc-col-actions">Actions</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody id="checks-tbody">
                   {% for c in checks %}
-                    <tr>
+                    <tr data-check-name="{{ c.name }}" data-check-status="{{ c.status }}">
                       <td class="hc-col-check">
-                        <div class="hc-check-main">
-                          <span class="hc-check-name">{{ c.name }}</span>
-
-                          {% if c.status == "up" %}
-                            <span class="badge bg-success-lt">UP</span>
-                          {% else if c.status == "warn" %}
-                            <span class="badge bg-warning-lt">WARN</span>
-                          {% else %}
-                            <span class="badge bg-danger-lt">DOWN</span>
-                          {% endif %}
-
-                          {% if c.critical %}
-                            <span class="badge bg-primary-lt">critical</span>
-                          {% endif %}
-                        </div>
+                        <span class="hc-check-name">{{ c.name }}</span>
                       </td>
 
-                      <td class="hc-col-last-run">
+                      <td class="hc-col-last">
                         {% if c.last_run != "-" %}
-                          <time class="font-monospace js-localtime" datetime="{{ c.last_run }}">{{ c.last_run }}</time>
-                        {% else %}
-                          <span class="text-muted">—</span>
-                        {% endif %}
-                      </td>
-                      <td class="hc-col-duration"><span class="font-monospace">{{ c.duration }}</span></td>
-                      <td class="hc-col-error">
-                        {% if c.error != "" %}
-                          <div class="hc-error-wrap">
-                            <span
-                              class="text-danger hc-truncate hc-error-text"
-                              data-bs-toggle="tooltip"
-                              data-bs-placement="top"
-                              data-bs-container="body"
-                              title="{{ c.error }}"
-                            >{{ c.error_short }}</span>
-
-                            <button
-                              type="button"
-                              class="btn btn-outline-secondary btn-sm btn-icon hc-copy-btn"
-                              data-copy-text="{{ c.error }}"
-                              aria-label="Copy error"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="18" height="18" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
-                                <rect x="8" y="8" width="12" height="12" rx="2" />
-                                <path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2" />
-                              </svg>
-                            </button>
-                          </div>
-                        {% else %}
-                          <span class="text-muted">—</span>
-                        {% endif %}
-                      </td>
-                      <td class="hc-col-labels">
-                        {% if c.labels != "" %}
                           <span
-                            class="font-monospace hc-truncate"
-                            data-bs-toggle="tooltip"
-                            data-bs-placement="top"
-                            data-bs-container="body"
-                            title="{{ c.labels }}"
-                          >{{ c.labels_short }}</span>
+                            class="font-monospace js-last-iso"
+                            data-datetime="{{ c.last_run }}"
+                            title="{{ c.last_run }}"
+                          >{{ c.last_run }}</span>
+                          <span
+                            class="text-muted ms-1 hc-last-ago js-last-ago"
+                            data-datetime="{{ c.last_run }}"
+                          >(—)</span>
                         {% else %}
                           <span class="text-muted">—</span>
+                        {% endif %}
+                      </td>
+
+                      <td class="hc-col-status">
+                        {% if c.status == "up" %}
+                          <span class="badge bg-success-lt hc-status-badge">UP</span>
+                        {% else if c.status == "warn" %}
+                          <span class="badge bg-warning-lt hc-status-badge">WARN</span>
+                        {% else %}
+                          <span class="badge bg-danger-lt hc-status-badge">DOWN</span>
+                        {% endif %}
+                      </td>
+
+                      <td class="hc-col-critical">
+                        {% if c.critical %}
+                          <span class="badge bg-primary-lt">Critical</span>
                         {% endif %}
                       </td>
 
                       <td class="hc-col-actions">
-                        <button
-                          type="button"
-                          class="btn btn-outline-secondary btn-sm btn-check-detail"
-                          data-check-name="{{ c.name }}"
-                          data-bs-toggle="modal"
-                          data-bs-target="#check-detail-modal"
-                          aria-label="Show details"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" class="icon me-1" width="18" height="18" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
-                            <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
-                            <path d="M21 12c-2.4 4-5.6 6-9 6s-6.6-2-9-6c2.4-4 5.6-6 9-6s6.6 2 9 6" />
-                          </svg>
-                          Detail
-                        </button>
+                        <div class="btn-list flex-nowrap justify-content-end hc-actions">
+                          {% if c.error != "" %}
+                            <button
+                              type="button"
+                              class="btn btn-sm btn-outline-pink"
+                              data-action="error"
+                              data-bs-toggle="popover"
+                              data-bs-trigger="hover focus"
+                              data-bs-placement="left"
+                              data-bs-container="body"
+                              data-bs-custom-class="hc-popover"
+                              data-bs-title="Error"
+                              data-bs-html="true"
+                              data-bs-sanitize="false"
+                              data-bs-content="{{ c.error_html|safe }}"
+                              aria-label="Show error"
+                            >
+                              <i class="ti ti-alert-triangle me-1"></i>Error
+                            </button>
+                          {% endif %}
+
+                          {% if c.labels_html != "" %}
+                            <button
+                              type="button"
+                              class="btn btn-sm btn-outline-primary"
+                              data-action="labels"
+                              data-bs-toggle="popover"
+                              data-bs-trigger="hover focus"
+                              data-bs-placement="left"
+                              data-bs-container="body"
+                              data-bs-custom-class="hc-popover"
+                              data-bs-title="Labels"
+                              data-bs-html="true"
+                              data-bs-sanitize="false"
+                              data-bs-content="{{ c.labels_html|safe }}"
+                              aria-label="Show labels"
+                            >
+                              <i class="ti ti-tags me-1"></i>Labels
+                            </button>
+                          {% endif %}
+
+                          <button
+                            type="button"
+                            class="btn btn-outline-secondary btn-sm btn-check-detail"
+                            data-check-name="{{ c.name }}"
+                            data-bs-toggle="modal"
+                            data-bs-target="#check-detail-modal"
+                            aria-label="Show details"
+                          >
+                            <i class="ti ti-eye me-1"></i>Detail
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   {% endfor %}
@@ -231,8 +269,8 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/js/tabler.min.js"></script>
-<script src="https://unpkg.com/htmx.org@1.9.12"></script>
+<!-- Bootstrap bundle includes Popper.js (required for popovers/tooltip). -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="/static/ui.js"></script>
 </body>
 </html>

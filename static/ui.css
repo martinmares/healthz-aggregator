@@ -15,18 +15,67 @@
   overflow-wrap: anywhere;
 }
 
-/* Table sizing: let "Check" column shrink/grow naturally (no hard-coded width),
-   while long values (error/labels) are ellipsized via .hc-truncate. */
+/* Table sizing: keep the last/actions columns visible without horizontal scroll.
+   "Check" takes the remaining space and will be ellipsized only if needed. */
 .hc-table {
-  table-layout: auto;
+  table-layout: fixed;
   width: 100%;
 }
 
-/* Columns that should never wrap (shrink-to-fit). */
-th.hc-col-check, td.hc-col-check { white-space: nowrap; width: 1%; }
-th.hc-col-last-run, td.hc-col-last-run { white-space: nowrap; width: 1%; }
-th.hc-col-duration, td.hc-col-duration { white-space: nowrap; width: 1%; }
-th.hc-col-actions, td.hc-col-actions { white-space: nowrap; width: 1%; text-align: right; }
+/* Columns */
+th.hc-col-check, td.hc-col-check {
+  /* Keep this column compact so the next columns start close to the left.
+     Long names are ellipsized. */
+  width: 14rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Note: older hacks like max-width:0 are unnecessary once width is explicit. */
+
+th.hc-col-last, td.hc-col-last {
+  white-space: nowrap;
+  width: 16rem;
+}
+
+th.hc-col-status, td.hc-col-status {
+  white-space: nowrap;
+  width: 7rem;
+}
+
+th.hc-col-critical, td.hc-col-critical {
+  white-space: nowrap;
+  width: 8rem;
+}
+
+th.hc-col-actions, td.hc-col-actions {
+  white-space: nowrap;
+  width: 18.5rem;
+  text-align: right;
+}
+
+/* Ensure the action buttons always stick to the right edge. */
+.hc-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Limit table height (≈ 15 rows) and scroll inside the card instead of making
+   the whole page endlessly tall. */
+.hc-table-scroll {
+  max-height: 720px;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+/* Keep the header visible while scrolling. */
+.hc-table-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--tblr-bg-surface, var(--bs-body-bg));
+}
 
 /* One-line truncation helper (ellipsis). */
 .hc-truncate {
@@ -36,49 +85,44 @@ th.hc-col-actions, td.hc-col-actions { white-space: nowrap; width: 1%; text-alig
   text-overflow: ellipsis;
 }
 
-/* Check cell layout: name + badges (kept on one line). */
-.hc-check-main {
-  display: inline-flex;
-  align-items: center;
-  gap: .5rem;
-}
 .hc-check-name {
   font-family: var(--tblr-font-monospace, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
   white-space: nowrap;
 }
 
-/* Error cell: truncate + copy button without forcing horizontal scroll. */
-.hc-error-wrap {
-  display: flex;
-  align-items: center;
-  gap: .35rem;
-  min-width: 0;
+/* Popovers for Error/Labels (Bootstrap popover with Tabler theme). */
+.popover.hc-popover {
+  max-width: 34rem;
+  box-shadow: 0 1rem 3rem rgba(0, 0, 0, .6);
 }
-.hc-error-text {
-  flex: 1 1 auto;
-  min-width: 0;
+.popover.hc-popover .popover-header {
+  font-weight: 600;
+}
+.popover.hc-popover .popover-body {
+  font-family: var(--tblr-font-monospace, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+  white-space: pre-wrap; /* important: render \n as real line breaks */
 }
 
-/* Dark tooltip tuned for long error strings. */
-.tooltip.hc-tooltip .tooltip-inner {
-  background: rgba(17, 24, 39, 0.98);
-  color: #e5e7eb;
-  max-width: 28rem;
-  text-align: left;
-  font-family: var(--tblr-font-monospace, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
-  white-space: pre-wrap;
-  padding: .5rem .75rem;
-  border-radius: .5rem;
-  box-shadow: 0 0.75rem 2rem rgba(0, 0, 0, .55);
+/* "Pink" outline button (Tabler has many colors, but keep it explicit). */
+.btn-outline-pink {
+  --hc-pink: #d63384;
+  color: var(--hc-pink);
+  border-color: rgba(214, 51, 132, .45);
 }
-.tooltip.hc-tooltip .tooltip-arrow::before {
-  border-top-color: rgba(17, 24, 39, 0.98);
-  border-bottom-color: rgba(17, 24, 39, 0.98);
-  border-left-color: rgba(17, 24, 39, 0.98);
-  border-right-color: rgba(17, 24, 39, 0.98);
+.btn-outline-pink:hover,
+.btn-outline-pink:focus {
+  color: #fff;
+  background: rgba(214, 51, 132, .85);
+  border-color: rgba(214, 51, 132, .85);
 }
 
 /* Slightly tighter table cells for status grids */
 .table td, .table th {
   vertical-align: top;
+}
+
+/* "(4m ago)" part in the Last column should be quieter than the ISO timestamp. */
+.hc-last-ago {
+  opacity: .65;
+  font-size: .875em;
 }

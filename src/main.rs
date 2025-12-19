@@ -7,7 +7,7 @@ mod state;
 use crate::{config::Config, http::metrics::Metrics, state::AppState};
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -43,7 +43,7 @@ async fn main() -> anyhow::Result<()> {
     let bind_addr = &cfg.server.bind;
     let listener = TcpListener::bind(bind_addr).await?;
 
-    tracing::info!(bind_addr = %bind_addr, "healthz-aggregator HTTP server started");
+    tracing::info!(bind_addr = %bind_addr, "healthcheck-aggregator HTTP server started");
 
     axum::serve(listener, app).await?;
 
