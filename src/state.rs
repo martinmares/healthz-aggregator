@@ -1,8 +1,8 @@
 use std::{
     collections::HashMap,
-    sync::RwLock,
     time::{Duration, Instant, SystemTime},
 };
+use tokio::sync::RwLock;
 
 use crate::config::{CheckConfig, Config};
 use serde::Serialize;
@@ -119,9 +119,6 @@ impl AppState {
         self.refresh_interval
     }
 
-    pub fn global_labels(&self) -> HashMap<String, String> {
-        self.global_labels.clone()
-    }
 
     pub fn merge_labels(
         global: &HashMap<String, String>,
@@ -142,31 +139,18 @@ impl AppState {
         self.checks.clone()
     }
 
-    pub fn update(&self, r: CheckResult) {
-        self.results.write().unwrap().insert(r.name.clone(), r);
+    pub async fn update(&self, r: CheckResult) {
+        self.results.write().await.insert(r.name.clone(), r);
     }
 
-    pub fn snapshot(&self) -> Vec<CheckResult> {
-        self.results.read().unwrap().values().cloned().collect()
+    pub async fn snapshot(&self) -> Vec<CheckResult> {
+        self.results.read().await.values().cloned().collect()
     }
 
-    /// True = aggregate OK
-    pub fn aggregate_ok(&self) -> bool {
-        let results = self.results.read().unwrap();
-
-        for r in results.values() {
-            if r.critical && r.status == CheckStatus::Down {
-                return false;
-            }
-        }
-
-        true
-    }
-
-    pub fn aggregate_snapshot(
+    pub async fn aggregate_snapshot(
         &self,
     ) -> (bool, AggregateSummary, Vec<CheckResult>, Vec<CheckResult>) {
-        let results = self.results.read().unwrap();
+        let results = self.results.read().await;
 
         let mut up = 0;
         let mut warn = 0;
@@ -207,7 +191,11 @@ impl AppState {
         (ok, summary, failed, warned)
     }
 
-    pub fn uptime(&self) -> String {
+    pub async fn get(&self, check_name: &str) -> Option<CheckResult> {
+        self.results.read().await.get(check_name).cloned()
+    }
+
+pub fn uptime(&self) -> String {
         // Human-friendly uptime for UI. Keep it stable and readable for L2.
         // Examples: "7.428 s", "3m 12s", "2h 05m", "1d 4h".
         let d = self.start.elapsed();
@@ -235,5 +223,18 @@ impl AppState {
         let days = total / 86_400;
         let h = (total % 86_400) / 3600;
         format!("{days}d {h}h")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize_label_name;
+
+    #[test]
+    fn sanitize_label_name_basic() {
+        assert_eq!(sanitize_label_name("Env"), "env");
+        assert_eq!(sanitize_label_name("a-b.c"), "a_b_c");
+        assert_eq!(sanitize_label_name("9lives"), "_9lives");
+        assert_eq!(sanitize_label_name(""), "_");
     }
 }

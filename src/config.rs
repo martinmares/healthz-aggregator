@@ -21,6 +21,10 @@ pub struct GlobalConfig {
     #[serde(with = "humantime_serde")]
     pub refresh_interval: Duration,
 
+    /// Fallback timeout for any check without its own timeout.
+    #[serde(with = "humantime_serde", default)]
+    pub default_timeout: Option<Duration>,
+
     /// Optional concurrency limit for running checks.
     /// If not set, all checks run concurrently.
     #[serde(default)]

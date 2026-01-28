@@ -149,10 +149,11 @@ fn error_to_popover_html(error: &str) -> String {
 }
 
 pub async fn ui_handler(state: Arc<AppState>) -> impl IntoResponse {
-    let (aggregate_ok, summary, _failed, _warn) = state.aggregate_snapshot();
+    let (aggregate_ok, summary, _failed, _warn) = state.aggregate_snapshot().await;
 
     let mut rows: Vec<CheckRow> = state
         .snapshot()
+        .await
         .into_iter()
         .map(|r| {
             let error = r.error.clone().unwrap_or_default();
@@ -200,7 +201,7 @@ pub async fn ui_handler(state: Arc<AppState>) -> impl IntoResponse {
 }
 
 pub async fn ui_snapshot_handler(state: Arc<AppState>) -> impl IntoResponse {
-    let (aggregate_ok, summary, _failed, _warn) = state.aggregate_snapshot();
+    let (aggregate_ok, summary, _failed, _warn) = state.aggregate_snapshot().await;
 
     let now = OffsetDateTime::now_utc()
         .format(&Rfc3339)
@@ -208,6 +209,7 @@ pub async fn ui_snapshot_handler(state: Arc<AppState>) -> impl IntoResponse {
 
     let mut checks: Vec<UiCheckSnapshot> = state
         .snapshot()
+        .await
         .into_iter()
         .map(|r| UiCheckSnapshot {
             name: r.name.clone(),

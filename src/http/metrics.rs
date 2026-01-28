@@ -135,8 +135,8 @@ impl Metrics {
         }
     }
 
-    pub fn update_from_state(&self, state: &AppState) {
-        let snapshot = state.snapshot();
+    pub async fn update_from_state(&self, state: &AppState) {
+        let snapshot = state.snapshot().await;
 
         for r in snapshot {
             // Keep labels fixed-length; missing keys become empty string.
@@ -158,12 +158,12 @@ impl Metrics {
                 self.duration.with_label_values(&values).set(d.as_secs_f64());
             }
 
-            if let Some(ts) = r.last_run {
-                if let Ok(epoch) = ts.duration_since(std::time::UNIX_EPOCH) {
-                    self.last_run
-                        .with_label_values(&values)
-                        .set(epoch.as_secs() as f64);
-                }
+            if let Some(ts) = r.last_run
+                && let Ok(epoch) = ts.duration_since(std::time::UNIX_EPOCH)
+            {
+                self.last_run
+                    .with_label_values(&values)
+                    .set(epoch.as_secs() as f64);
             }
         }
     }
@@ -172,13 +172,19 @@ impl Metrics {
         let families = self.registry.gather();
         let encoder = TextEncoder::new();
         let mut buf = Vec::new();
-        encoder.encode(&families, &mut buf).unwrap();
-        String::from_utf8(buf).unwrap()
+        if let Err(e) = encoder.encode(&families, &mut buf) {
+            tracing::error!(error = %e, "failed to encode prometheus metrics");
+            return "# metrics encoding error\n".to_string();
+        }
+        String::from_utf8(buf).unwrap_or_else(|e| {
+            tracing::error!(error = %e, "metrics output was not valid utf-8");
+            String::from_utf8_lossy(&e.into_bytes()).into_owned()
+        })
     }
 }
 
 /// HTTP handler
 pub async fn metrics_handler(state: Arc<AppState>, metrics: Arc<Metrics>) -> impl IntoResponse {
-    metrics.update_from_state(&state);
+    metrics.update_from_state(&state).await;
     metrics.encode()
 }

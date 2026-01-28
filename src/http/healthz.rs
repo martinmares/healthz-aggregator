@@ -26,7 +26,7 @@ pub async fn self_healthz() -> impl IntoResponse {
 }
 
 pub async fn aggregate_healthz(state: Arc<AppState>) -> impl IntoResponse {
-    let (ok, summary, failed, warn) = state.aggregate_snapshot();
+    let (ok, summary, failed, warn) = state.aggregate_snapshot().await;
 
     let body = AggregateResponse {
         status: if ok { "ok" } else { "failed" },
@@ -35,7 +35,7 @@ pub async fn aggregate_healthz(state: Arc<AppState>) -> impl IntoResponse {
         warn,
         timestamp: OffsetDateTime::now_utc()
             .format(&time::format_description::well_known::Rfc3339)
-            .unwrap(),
+            .unwrap_or_else(|_| "-".into()),
     };
 
     let status = if ok {
@@ -54,8 +54,8 @@ pub async fn details_healthz(state: Arc<AppState>) -> impl IntoResponse {
         uptime,
         timestamp: OffsetDateTime::now_utc()
             .format(&time::format_description::well_known::Rfc3339)
-            .unwrap(),
-        checks: state.snapshot(),
+            .unwrap_or_else(|_| "-".into()),
+        checks: state.snapshot().await,
     };
 
     (StatusCode::OK, Json(body))
@@ -65,8 +65,7 @@ pub async fn details_healthz_one(
     state: Arc<AppState>,
     Path(check_name): Path<String>,
 ) -> impl IntoResponse {
-    let results = state.snapshot(); // nebo líp: state.get(&check_name)
-    if let Some(r) = results.into_iter().find(|x| x.name == check_name) {
+    if let Some(r) = state.get(&check_name).await {
         return (StatusCode::OK, Json(r)).into_response();
     }
     (StatusCode::NOT_FOUND, "check not found").into_response()
