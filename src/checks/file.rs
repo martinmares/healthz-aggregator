@@ -70,18 +70,18 @@ pub async fn run(cfg: &CheckConfig) -> Result<()> {
         text
     };
 
-    if let Some(exp) = expected_value {
-        if got != exp {
-            return Err(anyhow!(
-                "file value mismatch (got '{got}', expected '{exp}')"
-            ));
-        }
+    if let Some(exp) = expected_value
+        && got != exp
+    {
+        return Err(anyhow!(
+            "file value mismatch (got '{got}', expected '{exp}')"
+        ));
     }
 
-    if let Some(cont) = expected_contains {
-        if !got.contains(cont) {
-            return Err(anyhow!("file value does not contain '{cont}'"));
-        }
+    if let Some(cont) = expected_contains
+        && !got.contains(cont)
+    {
+        return Err(anyhow!("file value does not contain '{cont}'"));
     }
 
     if let Some(re) = expected_regex {

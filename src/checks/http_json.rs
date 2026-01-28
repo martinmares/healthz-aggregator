@@ -69,10 +69,10 @@ pub async fn run(cfg: &CheckConfig) -> Result<()> {
 
     let resp = req.send().await.context("sending HTTP request")?;
 
-    if let Some(code) = status_code {
-        if resp.status().as_u16() != code {
-            return Err(anyhow!("unexpected status {} (expected {})", resp.status(), code));
-        }
+    if let Some(code) = status_code
+        && resp.status().as_u16() != code
+    {
+        return Err(anyhow!("unexpected status {} (expected {})", resp.status(), code));
     }
 
     let json: Value = resp.json().await.context("parsing JSON body")?;

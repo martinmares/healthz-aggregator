@@ -127,20 +127,20 @@ pub async fn run(cfg: &CheckConfig) -> Result<()> {
 
     let got = scalar_to_string(&row)?;
 
-    if let Some(exp) = expected_scalar {
-        if got != exp {
-            return Err(anyhow!(
-                "postgres scalar mismatch (got '{got}', expected '{exp}')"
-            ));
-        }
+    if let Some(exp) = expected_scalar
+        && got != exp
+    {
+        return Err(anyhow!(
+            "postgres scalar mismatch (got '{got}', expected '{exp}')"
+        ));
     }
 
-    if let Some(cont) = expected_contains {
-        if !got.contains(cont) {
-            return Err(anyhow!(
-                "postgres scalar does not contain '{cont}' (got '{got}')"
-            ));
-        }
+    if let Some(cont) = expected_contains
+        && !got.contains(cont)
+    {
+        return Err(anyhow!(
+            "postgres scalar does not contain '{cont}' (got '{got}')"
+        ));
     }
 
     if let Some(re) = expected_regex {

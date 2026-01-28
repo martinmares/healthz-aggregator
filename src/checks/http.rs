@@ -63,20 +63,20 @@ pub async fn run(cfg: &CheckConfig) -> Result<()> {
 
     let resp = req.send().await.context("sending HTTP request")?;
 
-    if let Some(code) = status_code {
-        if resp.status().as_u16() != code {
-            return Err(anyhow!("unexpected status {} (expected {})", resp.status(), code));
-        }
+    if let Some(code) = status_code
+        && resp.status().as_u16() != code
+    {
+        return Err(anyhow!("unexpected status {} (expected {})", resp.status(), code));
     }
 
     let needs_body = expected_body_substring.is_some() || expected_body_regex.is_some();
     if needs_body {
         let body = resp.text().await.context("reading response body")?;
 
-        if let Some(substr) = expected_body_substring {
-            if !body.contains(substr) {
-                return Err(anyhow!("response body missing substring"));
-            }
+        if let Some(substr) = expected_body_substring
+            && !body.contains(substr)
+        {
+            return Err(anyhow!("response body missing substring"));
         }
 
         if let Some(re) = expected_body_regex {

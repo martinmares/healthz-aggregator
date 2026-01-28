@@ -128,16 +128,16 @@ pub async fn run(cfg: &CheckConfig) -> Result<()> {
             .map_err(|_| anyhow!("oracle connect/query timeout after {:?}", timeout))?
             .map_err(|e| anyhow!("oracle task join failed: {e}"))??;
 
-        if let Some(exp) = expected_scalar {
-            if got != exp {
-                return Err(anyhow!("expected scalar '{exp}', got '{got}'"));
-            }
+        if let Some(exp) = expected_scalar
+            && got != exp
+        {
+            return Err(anyhow!("expected scalar '{exp}', got '{got}'"));
         }
 
-        if let Some(cont) = expected_contains {
-            if !got.contains(&cont) {
-                return Err(anyhow!("result does not contain '{cont}'"));
-            }
+        if let Some(cont) = expected_contains
+            && !got.contains(&cont)
+        {
+            return Err(anyhow!("result does not contain '{cont}'"));
         }
 
         if let Some(re) = expected_regex {

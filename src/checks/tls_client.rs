@@ -98,7 +98,7 @@ pub fn client_config(tls_verify: bool) -> Result<Arc<ClientConfig>> {
     } else {
         builder
             .dangerous()
-            .with_custom_certificate_verifier(Arc::new(AcceptAnyVerifier::default()))
+            .with_custom_certificate_verifier(Arc::new(AcceptAnyVerifier))
             .with_no_client_auth()
     };
 

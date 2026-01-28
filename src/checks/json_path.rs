@@ -39,7 +39,7 @@ pub fn lookup<'a>(root: &'a Value, path: &str) -> Option<&'a Value> {
 
         // key part
         if !rest.starts_with('[') {
-            let key_end = rest.find('[').unwrap_or_else(|| rest.len());
+            let key_end = rest.find('[').unwrap_or(rest.len());
             let key = &rest[..key_end];
             cursor = match cursor {
                 Value::Object(map) => map.get(key)?,
