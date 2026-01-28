@@ -1,6 +1,5 @@
 use crate::config::{CheckConfig, CheckSpec};
-use anyhow::{anyhow, Context, Result};
-use regex::Regex;
+use anyhow::{anyhow, Result};
 
 #[cfg(feature = "oracle")]
 use oracle::Connection;

@@ -1,4 +1,4 @@
-use axum::{Router, routing::get};
+use axum::{Router, response::Redirect, routing::get};
 use std::sync::Arc;
 use tower_http::services::ServeDir;
 
@@ -14,6 +14,7 @@ pub mod ui;
 
 pub fn router(state: Arc<AppState>, metrics: Arc<Metrics>) -> Router {
     Router::new()
+        .route("/", get(|| async { Redirect::temporary("/ui") }))
         // self health
         .route("/healthz", get(self_healthz))
         .route("/healthz/self", get(self_healthz))
