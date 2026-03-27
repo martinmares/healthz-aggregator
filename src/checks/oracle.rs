@@ -2,7 +2,11 @@ use crate::config::{CheckConfig, CheckSpec};
 use anyhow::{anyhow, Result};
 
 #[cfg(feature = "oracle")]
+use anyhow::Context;
+#[cfg(feature = "oracle")]
 use oracle::Connection;
+#[cfg(feature = "oracle")]
+use regex::Regex;
 
 #[cfg(feature = "oracle")]
 fn build_connect_string(

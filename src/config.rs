@@ -1,3 +1,4 @@
+use anyhow::{Context, bail};
 use serde::Deserialize;
 use std::{collections::HashMap, fs, time::Duration};
 
@@ -6,6 +7,10 @@ pub struct Config {
     pub server: ServerConfig,
     pub global: GlobalConfig,
     pub metrics: Option<MetricsConfig>,
+    #[serde(default)]
+    pub response_profiles: HashMap<String, ResponseProfileConfig>,
+    #[serde(default)]
+    pub groups: HashMap<String, GroupConfig>,
     pub checks: Vec<CheckConfig>,
 }
 
@@ -41,6 +46,29 @@ pub struct MetricsConfig {
     pub static_labels: Option<HashMap<String, String>>,
 }
 
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct ResponseProfileConfig {
+    #[serde(default)]
+    pub ok: ResponseSpecConfig,
+    #[serde(default)]
+    pub fail: ResponseSpecConfig,
+}
+
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct ResponseSpecConfig {
+    pub status_code: Option<u16>,
+    pub content_type: Option<String>,
+    pub body: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct GroupConfig {
+    #[serde(default, alias = "response_profile")]
+    pub default_profile: Option<String>,
+    #[serde(default)]
+    pub profiles: Vec<String>,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct CheckConfig {
     pub name: String,
@@ -52,6 +80,9 @@ pub struct CheckConfig {
     /// Per-check labels. Merged with metrics.static_labels.
     #[serde(default)]
     pub static_labels: HashMap<String, String>,
+
+    #[serde(default)]
+    pub groups: Vec<String>,
 
     #[serde(flatten)]
     pub spec: CheckSpec,
@@ -196,9 +227,120 @@ fn default_true() -> bool {
 }
 
 impl Config {
-    pub fn load() -> anyhow::Result<Self> {
-        let path = std::env::var("HEALTHZ_CONFIG").unwrap_or_else(|_| "config.yaml".to_string());
-        let raw = fs::read_to_string(&path)?;
-        Ok(serde_yaml_ng::from_str(&raw)?)
+    pub fn load_from_path(path: Option<&str>) -> anyhow::Result<Self> {
+        let path = path.unwrap_or("config.yaml");
+        let raw = fs::read_to_string(path)
+            .with_context(|| format!("reading config file from {path}"))?;
+        let cfg: Self = serde_yaml_ng::from_str(&raw).context("parsing YAML config")?;
+        cfg.validate().context("validating config")?;
+        Ok(cfg)
+    }
+
+    fn validate(&self) -> anyhow::Result<()> {
+        for (group_name, group_cfg) in &self.groups {
+            if let Some(profile_name) = &group_cfg.default_profile
+                && !self.response_profiles.contains_key(profile_name)
+            {
+                bail!(
+                    "group '{group_name}' references unknown default_profile '{profile_name}'"
+                );
+            }
+
+            for profile_name in &group_cfg.profiles {
+                if !self.response_profiles.contains_key(profile_name) {
+                    bail!(
+                        "group '{group_name}' references unknown profile '{profile_name}'"
+                    );
+                }
+            }
+
+            if let Some(default_profile) = &group_cfg.default_profile
+                && !group_cfg.profiles.iter().any(|profile| profile == default_profile)
+            {
+                bail!(
+                    "group '{group_name}' default_profile '{default_profile}' must also be present in profiles"
+                );
+            }
+        }
+
+        for check in &self.checks {
+            for group_name in &check.groups {
+                if !self.groups.contains_key(group_name) {
+                    bail!(
+                        "check '{}' references unknown group '{}'",
+                        check.name,
+                        group_name
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Config;
+
+    #[test]
+    fn rejects_unknown_group_reference() {
+        let yaml = r#"
+server:
+  bind: 127.0.0.1:8998
+global:
+  refresh_interval: 30s
+checks:
+  - name: api
+    groups: [missing]
+    type: tcp
+    host: localhost
+    port: 80
+"#;
+
+        let cfg: Config = serde_yaml_ng::from_str(yaml).expect("config should parse");
+        let err = cfg.validate().expect_err("config should fail validation");
+        assert!(err.to_string().contains("unknown group 'missing'"));
+    }
+
+    #[test]
+    fn rejects_unknown_response_profile_reference() {
+        let yaml = r#"
+server:
+  bind: 127.0.0.1:8998
+global:
+  refresh_interval: 30s
+groups:
+  public:
+    default_profile: missing
+checks: []
+"#;
+
+        let cfg: Config = serde_yaml_ng::from_str(yaml).expect("config should parse");
+        let err = cfg.validate().expect_err("config should fail validation");
+        assert!(err.to_string().contains("unknown default_profile 'missing'"));
+    }
+
+    #[test]
+    fn rejects_default_profile_not_in_whitelist() {
+        let yaml = r#"
+server:
+  bind: 127.0.0.1:8998
+global:
+  refresh_interval: 30s
+response_profiles:
+  json:
+    ok:
+      body: '{"status":"ok"}'
+groups:
+  public:
+    default_profile: json
+    profiles: []
+checks: []
+"#;
+
+        let cfg: Config = serde_yaml_ng::from_str(yaml).expect("config should parse");
+        let err = cfg.validate().expect_err("config should fail validation");
+        assert!(err.to_string().contains("must also be present in profiles"));
     }
 }

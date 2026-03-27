@@ -12,31 +12,37 @@
 </head>
 
 <body>
-<div class="page" id="root" data-refresh-secs="{{ refresh_interval_secs }}">
+<div
+  class="page"
+  id="root"
+  data-refresh-secs="{{ refresh_interval_secs }}"
+  data-active-group="{{ active_group }}"
+  data-snapshot-href="{{ snapshot_href }}"
+  data-details-href="{{ details_href }}"
+  data-scope-health-href="{{ scope_health_href }}"
+>
 
   <!-- HEADER block (keep layout) -->
   <div class="container-xl mt-3">
     <div class="card">
       <div class="card-body">
-        <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
-          <div>
+        <div class="d-flex align-items-start justify-content-between gap-3">
+          <div class="flex-fill min-w-0">
             <h2 class="mb-1">
               <i class="ti ti-heartbeat me-2"></i>
-              Healthcheck Aggregator
+              Healthz Aggregator
             </h2>
             <div class="text-muted">
               Combined health checks for Kubernetes probes + UI + Prometheus.
             </div>
-          </div>
-
-          <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-            <div id="header-badges" class="d-flex align-items-center gap-2 flex-wrap">
+            <div id="header-badges" class="d-flex align-items-center gap-2 flex-wrap mt-3">
               {% if aggregate_ok %}
                 <span id="badge-aggregate" class="badge bg-success-lt">aggregate: <span class="fw-semibold" id="badge-aggregate-value">OK</span></span>
               {% else %}
                 <span id="badge-aggregate" class="badge bg-danger-lt">aggregate: <span class="fw-semibold" id="badge-aggregate-value">FAILED</span></span>
               {% endif %}
 
+              <span class="badge bg-azure-lt">scope: <span class="fw-semibold" id="badge-scope">{{ active_scope_label }}</span></span>
               <span class="badge bg-secondary-lt">uptime: <span class="font-monospace" id="badge-uptime">{{ uptime }}</span></span>
               <span class="badge bg-secondary-lt">refresh: <span class="font-monospace" id="badge-refresh">{{ refresh_interval }}</span></span>
               <span class="badge bg-secondary-lt">
@@ -44,11 +50,23 @@
                 <time class="font-monospace js-localtime" id="badge-updated" datetime="{{ now }}">{{ now }}</time>
               </span>
             </div>
+          </div>
 
-            <label class="form-check form-switch m-0 ms-2">
-              <input class="form-check-input" id="theme-toggle" type="checkbox" />
-              <span class="form-check-label">Theme</span>
-            </label>
+          <div class="hc-theme-wrap flex-shrink-0">
+            <a href="#" class="nav-link px-0 hc-theme-toggle" id="theme-toggle" tabindex="-1" aria-label="Switch theme">
+              <i class="ti ti-sun"></i>
+            </a>
+            <div id="theme-menu" class="dropdown-menu dropdown-menu-end dropdown-menu-arrow hc-theme-menu">
+              <a href="#" class="dropdown-item" data-theme="light">
+                <i class="ti ti-sun me-2"></i> Light
+              </a>
+              <a href="#" class="dropdown-item" data-theme="dark">
+                <i class="ti ti-moon me-2"></i> Dark
+              </a>
+              <a href="#" class="dropdown-item" data-theme="auto">
+                <i class="ti ti-device-desktop me-2"></i> Auto
+              </a>
+            </div>
           </div>
         </div>
       </div>
@@ -72,10 +90,30 @@
                   <div class="text-muted small" id="checks-summary">
                     total={{ summary_total }}, up={{ summary_up }}, warn={{ summary_warn }}, down={{ summary_down }}, critical_down={{ summary_critical_down }}
                   </div>
+                  <div class="text-muted small hc-scope-links">
+                    scope endpoints:
+                    <a id="scope-health-link" href="{{ scope_health_href }}" target="_blank" rel="noopener">{{ scope_health_href }}</a>
+                    <span class="mx-1">|</span>
+                    <a id="scope-details-link" href="{{ details_href }}" target="_blank" rel="noopener">{{ details_href }}</a>
+                    <span id="scope-profile-separator" class="mx-1 {% if has_profile_testing %}{% else %}d-none{% endif %}">|</span>
+                    <button
+                      type="button"
+                      class="btn btn-link btn-sm p-0 align-baseline hc-profile-trigger {% if has_profile_testing %}{% else %}d-none{% endif %}"
+                      id="scope-profile-trigger"
+                      data-bs-toggle="modal"
+                      data-bs-target="#profile-test-modal"
+                    >test profile</button>
+                  </div>
+                  <div id="scope-default-profile-wrap" class="text-muted small hc-scope-profile {% if has_profile_testing %}{% else %}d-none{% endif %}">
+                    default profile:
+                    <span class="font-monospace" id="scope-default-profile">{{ scope_default_profile }}</span>
+                    <span class="mx-1">→</span>
+                    <a id="scope-default-profile-link" href="{{ scope_default_profile_href }}" target="_blank" rel="noopener">{{ scope_default_profile_href }}</a>
+                  </div>
                 </div>
 
                 <div class="card-actions">
-                  <a class="btn btn-outline-secondary btn-sm" href="/healthz/details" target="_blank" rel="noopener">
+                  <a class="btn btn-outline-secondary btn-sm" id="details-link" href="{{ details_href }}" target="_blank" rel="noopener">
                     <i class="ti ti-code me-1"></i>Details
                   </a>
                   <a class="btn btn-outline-secondary btn-sm" href="/metrics" target="_blank" rel="noopener">
@@ -86,13 +124,22 @@
 
               <!-- Filter (between header and table) -->
               <div class="card-body py-2 border-top-0 border-bottom">
-                <div class="row g-2 align-items-center">
-                  <div class="col-auto">
-                    <label for="check-filter" class="col-form-label col-form-label-sm text-muted">Filter by name:</label>
+                <div class="row g-3 align-items-end">
+                  <div class="col-12 col-xl-3">
+                    <div class="hc-toolbar-field">
+                      <label for="group-select" class="form-label form-label-sm text-muted mb-1">Scope</label>
+                      <select id="group-select" class="form-select form-select-sm hc-group-select">
+                        {% for group in group_options %}
+                          <option value="{{ group.value }}" {% if group.selected %}selected{% endif %}>{{ group.label }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
                   </div>
 
-                  <div class="col">
-                    <div class="input-icon">
+                  <div class="col-12 col-xl">
+                    <div class="hc-toolbar-field">
+                      <label for="check-filter" class="form-label form-label-sm text-muted mb-1">Filter by name</label>
+                      <div class="input-icon">
                       <span class="input-icon-addon">
                         <i class="ti ti-search"></i>
                       </span>
@@ -104,11 +151,14 @@
                         autocomplete="off"
                         spellcheck="false"
                       />
+                      </div>
                     </div>
                   </div>
 
-                  <div class="col-auto">
-                    <div class="d-flex align-items-center gap-3 flex-wrap">
+                  <div class="col-12 col-xl-auto">
+                    <div class="hc-toolbar-field">
+                      <div class="form-label form-label-sm text-muted mb-1">Status</div>
+                      <div class="d-flex align-items-center gap-3 flex-wrap hc-status-filter">
                       <label class="form-check form-check-inline m-0">
                         <input class="form-check-input" type="checkbox" id="filter-status-up" checked />
                         <span class="form-check-label small text-success">UP</span>
@@ -121,13 +171,18 @@
                         <input class="form-check-input" type="checkbox" id="filter-status-down" checked />
                         <span class="form-check-label small text-danger">DOWN</span>
                       </label>
+                      </div>
                     </div>
                   </div>
 
-                  <div class="col-auto">
-                    <button id="check-filter-clear" type="button" class="btn btn-sm btn-outline-secondary">Clear</button>
+                  <div class="col-12 col-xl-auto">
+                    <div class="hc-toolbar-field">
+                      <div class="form-label form-label-sm text-muted mb-1">&nbsp;</div>
+                      <button id="check-filter-clear" type="button" class="btn btn-sm btn-outline-secondary w-100">Clear</button>
+                    </div>
                   </div>
                 </div>
+                <div class="mt-2 small text-muted" id="scope-help">{{ scope_help }}</div>
               </div>
 
               <div class="table-responsive hc-table-scroll">
@@ -151,7 +206,7 @@
                       <td class="hc-col-last">
                         {% if c.last_run != "-" %}
                           <span
-                            class="font-monospace js-last-iso"
+                            class="font-monospace js-last-local"
                             data-datetime="{{ c.last_run }}"
                             title="{{ c.last_run }}"
                           >{{ c.last_run }}</span>
@@ -249,9 +304,9 @@
 </div><!-- page -->
 
 <!-- Check detail modal -->
-<div class="modal fade" id="check-detail-modal" tabindex="-1" aria-hidden="true">
+<div class="modal modal-blur fade" id="check-detail-modal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable" role="document">
-    <div class="modal-content shadow-lg">
+    <div class="modal-content hc-modal-content">
       <div class="modal-header">
         <h5 class="modal-title">
           <i class="ti ti-info-circle me-2"></i>
@@ -261,9 +316,57 @@
       </div>
       <div class="modal-body">
         <div class="alert alert-info py-2 mb-2">
-          Fetched from <span class="font-monospace" id="check-detail-modal-source">/healthz/details</span>.
+          Fetched from <span class="font-monospace" id="check-detail-modal-source">/healthz/details</span>
         </div>
         <pre class="m-0 p-3 border rounded bg-body-tertiary font-monospace overflow-auto text-body" id="check-detail-modal-json" style="max-height: 55vh;">Loading…</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal modal-blur fade" id="profile-test-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable" role="document">
+    <div class="modal-content hc-modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="ti ti-route me-2"></i>
+          <span id="profile-test-modal-title">Profile response</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3 align-items-end">
+          <div class="col-12 col-lg-6">
+            <label for="profile-test-select" class="form-label form-label-sm text-muted mb-1">Response profile</label>
+            <select id="profile-test-select" class="form-select form-select-sm">
+              {% for profile in profile_options %}
+                <option value="{{ profile.value }}" {% if profile.selected %}selected{% endif %}>{{ profile.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-lg-6">
+            <div class="small text-muted">Resolved endpoint</div>
+            <div>
+              <a class="font-monospace" id="profile-test-url" href="{{ scope_default_profile_href }}" target="_blank" rel="noopener">{{ scope_default_profile_href }}</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-3 mt-1">
+          <div class="col-12 col-lg-4">
+            <div class="small text-muted">HTTP status</div>
+            <div class="font-monospace" id="profile-test-status">—</div>
+          </div>
+          <div class="col-12 col-lg-8">
+            <div class="small text-muted">Content-Type</div>
+            <div class="font-monospace text-break" id="profile-test-content-type">—</div>
+          </div>
+        </div>
+
+        <div class="alert alert-info py-2 mt-3 mb-2">
+          Fetched from <span class="font-monospace" id="profile-test-source">{{ scope_default_profile_href }}</span>
+        </div>
+        <pre class="m-0 p-3 border rounded bg-body-tertiary font-monospace overflow-auto text-body" id="profile-test-body" style="max-height: 45vh;">Select a profile to fetch the live response.</pre>
       </div>
     </div>
   </div>

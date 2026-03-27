@@ -26,14 +26,24 @@ pub fn spawn(
     });
 }
 
-async fn run_once(
+pub async fn run_once(
     state: Arc<AppState>,
+    semaphore: Option<Arc<Semaphore>>,
+    default_timeout: Option<std::time::Duration>,
+) {
+    let checks = state.check_configs();
+    run_checks_once(state, checks, semaphore, default_timeout).await;
+}
+
+pub async fn run_checks_once(
+    state: Arc<AppState>,
+    checks: Vec<crate::config::CheckConfig>,
     semaphore: Option<Arc<Semaphore>>,
     default_timeout: Option<std::time::Duration>,
 ) {
     tracing::debug!("scheduler tick");
 
-    let futures = state.check_configs().into_iter().map(|cfg| {
+    let futures = checks.into_iter().map(|cfg| {
         let state = state.clone();
         let semaphore = semaphore.clone();
 

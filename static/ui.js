@@ -1,26 +1,54 @@
-// Theme toggle (Tabler / Bootstrap 5.3)
+// Theme menu (Tabler / Bootstrap 5.3)
 (function () {
-  const key = "healthcheck-aggregator-ui-theme";
+  const key = "healthz-aggregator-ui-theme";
   const root = document.documentElement;
   const toggle = document.getElementById("theme-toggle");
+  const menu = document.getElementById("theme-menu");
+  const buttons = document.querySelectorAll("[data-theme]");
 
-  function setTheme(t) {
-    root.setAttribute("data-bs-theme", t);
+  function applyTheme(theme) {
+    if (theme === "auto") {
+      const prefersDark =
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+      root.setAttribute("data-bs-theme", prefersDark ? "dark" : "light");
+    } else {
+      root.setAttribute("data-bs-theme", theme);
+    }
   }
 
-  const saved = localStorage.getItem(key);
-  const prefersDark =
-    window.matchMedia &&
-    window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const initial = saved || (prefersDark ? "dark" : "light");
-  setTheme(initial);
+  const saved = localStorage.getItem(key) || "auto";
+  applyTheme(saved);
 
-  if (toggle) {
-    toggle.checked = initial === "dark";
-    toggle.addEventListener("change", () => {
-      const next = toggle.checked ? "dark" : "light";
-      setTheme(next);
-      localStorage.setItem(key, next);
+  if (toggle && menu) {
+    toggle.addEventListener("click", (e) => {
+      e.preventDefault();
+      const isVisible = menu.style.display === "block";
+      menu.style.display = isVisible ? "none" : "block";
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!toggle.contains(e.target) && !menu.contains(e.target)) {
+        menu.style.display = "none";
+      }
+    });
+  }
+
+  buttons.forEach((button) => {
+    button.addEventListener("click", (e) => {
+      e.preventDefault();
+      const theme = button.getAttribute("data-theme") || "auto";
+      localStorage.setItem(key, theme);
+      applyTheme(theme);
+      if (menu) menu.style.display = "none";
+    });
+  });
+
+  if (window.matchMedia) {
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+      if ((localStorage.getItem(key) || "auto") === "auto") {
+        applyTheme("auto");
+      }
     });
   }
 })();
@@ -36,6 +64,19 @@ const HealthzUi = (function () {
       .replace(/'/g, "&#39;");
   }
 
+  function formatLocalDateTime(value) {
+    const d = value instanceof Date ? value : new Date(value);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleString(undefined, {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  }
+
   // Convert RFC3339 timestamps (UTC) to browser-local time.
   function formatLocalTimes(root) {
     const scope = root || document;
@@ -43,17 +84,21 @@ const HealthzUi = (function () {
     els.forEach((el) => {
       const dt = el.getAttribute("datetime");
       if (!dt) return;
-      const d = new Date(dt);
-      if (isNaN(d.getTime())) return;
+      const formatted = formatLocalDateTime(dt);
+      if (!formatted) return;
+      el.textContent = formatted;
+    });
+  }
 
-      el.textContent = d.toLocaleString(undefined, {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      });
+  function formatLastLocal(root) {
+    const scope = root || document;
+    const els = scope.querySelectorAll(".js-last-local[data-datetime]");
+    els.forEach((el) => {
+      const dt = el.getAttribute("data-datetime");
+      if (!dt) return;
+      const formatted = formatLocalDateTime(dt);
+      if (!formatted) return;
+      el.textContent = formatted;
     });
   }
 
@@ -135,7 +180,9 @@ const HealthzUi = (function () {
 
   return {
     escapeHtml,
+    formatLocalDateTime,
     formatLocalTimes,
+    formatLastLocal,
     formatLastAgo,
     timeAgoShort,
     initPopovers,
@@ -240,9 +287,112 @@ const HealthzUi = (function () {
   });
 })();
 
+// Modal response profile tester.
+(function () {
+  let activeRequestId = 0;
+
+  async function fetchProfileResponse(href) {
+    const resp = await fetch(href, {
+      headers: { Accept: "*/*" },
+      cache: "no-store",
+    });
+    return {
+      status: resp.status,
+      contentType: resp.headers.get("content-type") || "—",
+      body: await resp.text(),
+    };
+  }
+
+  function setProfileModalState({ href, status, contentType, body }) {
+    const url = document.getElementById("profile-test-url");
+    const source = document.getElementById("profile-test-source");
+    const statusEl = document.getElementById("profile-test-status");
+    const contentTypeEl = document.getElementById("profile-test-content-type");
+    const bodyEl = document.getElementById("profile-test-body");
+
+    if (url) {
+      url.textContent = href || "—";
+      if (href) {
+        url.setAttribute("href", href);
+      } else {
+        url.removeAttribute("href");
+      }
+    }
+    if (source) source.textContent = href || "—";
+    if (statusEl) statusEl.textContent = status || "—";
+    if (contentTypeEl) contentTypeEl.textContent = contentType || "—";
+    if (bodyEl) bodyEl.textContent = body || "";
+  }
+
+  async function runProfileFetch() {
+    const root = document.getElementById("root");
+    const group = root && root.dataset ? root.dataset.activeGroup || "" : "";
+    const select = document.getElementById("profile-test-select");
+    if (!group || !select || select.options.length === 0) {
+      setProfileModalState({
+        href: "",
+        status: "—",
+        contentType: "—",
+        body: "Select a concrete group to test profile responses.",
+      });
+      return;
+    }
+
+    const href = (function () {
+      const value = select.value || "__default__";
+      if (value === "__default__") {
+        return `/groups/${encodeURIComponent(group)}/healthz`;
+      }
+      return `/groups/${encodeURIComponent(group)}/healthz/profiles/${encodeURIComponent(value)}`;
+    })();
+
+    const requestId = ++activeRequestId;
+    setProfileModalState({
+      href,
+      status: "Loading…",
+      contentType: "Loading…",
+      body: "Fetching live response…",
+    });
+
+    try {
+      const result = await fetchProfileResponse(href);
+      if (requestId !== activeRequestId) return;
+      setProfileModalState({
+        href,
+        status: String(result.status),
+        contentType: result.contentType,
+        body: result.body || "",
+      });
+    } catch (e) {
+      if (requestId !== activeRequestId) return;
+      setProfileModalState({
+        href,
+        status: "request failed",
+        contentType: "—",
+        body: `Failed to fetch profile response: ${e && e.message ? e.message : e}`,
+      });
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const modal = document.getElementById("profile-test-modal");
+    const select = document.getElementById("profile-test-select");
+    if (!modal || !select) return;
+
+    modal.addEventListener("shown.bs.modal", () => {
+      runProfileFetch();
+    });
+
+    select.addEventListener("change", () => {
+      runProfileFetch();
+    });
+  });
+})();
+
 // UI refresh (no HTMX; patch DOM in-place).
 (function () {
   let inFlight = false;
+  let refreshQueued = false;
   let lastServerNowMs = null;
 
   // Client-side filter for the checks table.
@@ -255,6 +405,142 @@ const HealthzUi = (function () {
   let filterShowUp = true;
   let filterShowWarn = true;
   let filterShowDown = true;
+
+  function getRoot() {
+    return document.getElementById("root");
+  }
+
+  function getActiveGroup() {
+    const root = getRoot();
+    return root && root.dataset ? root.dataset.activeGroup || "" : "";
+  }
+
+  function setActiveGroup(group) {
+    const root = getRoot();
+    if (!root || !root.dataset) return;
+
+    const normalized = String(group || "").trim();
+    root.dataset.activeGroup = normalized;
+    root.dataset.snapshotHref = normalized
+      ? `/ui/api/snapshot?group=${encodeURIComponent(normalized)}`
+      : "/ui/api/snapshot";
+    root.dataset.detailsHref = normalized
+      ? `/groups/${encodeURIComponent(normalized)}/healthz/details`
+      : "/healthz/details";
+    root.dataset.scopeHealthHref = normalized
+      ? `/groups/${encodeURIComponent(normalized)}/healthz`
+      : "/healthz/aggregate";
+  }
+
+  function currentSnapshotHref() {
+    const root = getRoot();
+    return root && root.dataset && root.dataset.snapshotHref
+      ? root.dataset.snapshotHref
+      : "/ui/api/snapshot";
+  }
+
+  function currentUiHref() {
+    const group = getActiveGroup();
+    return group ? `/ui?group=${encodeURIComponent(group)}` : "/ui";
+  }
+
+  function resolveProfileHref(group, profile) {
+    const normalizedGroup = String(group || "").trim();
+    if (!normalizedGroup) return "";
+    if (!profile || profile === "__default__") {
+      return `/groups/${encodeURIComponent(normalizedGroup)}/healthz`;
+    }
+    return `/groups/${encodeURIComponent(normalizedGroup)}/healthz/profiles/${encodeURIComponent(profile)}`;
+  }
+
+  function replaceSelectOptions(select, options, preferredValue) {
+    if (!select) return;
+    const items = Array.isArray(options) ? options : [];
+    const wanted = typeof preferredValue === "string" ? preferredValue : "";
+    select.innerHTML = "";
+    items.forEach((item) => {
+      const option = document.createElement("option");
+      option.value = item && item.value ? item.value : "";
+      option.textContent = item && item.label ? item.label : option.value;
+      option.selected = option.value === wanted || (!wanted && !!(item && item.selected));
+      select.appendChild(option);
+    });
+    if (wanted && !items.some((item) => item && item.value === wanted) && select.options.length > 0) {
+      select.selectedIndex = 0;
+    }
+  }
+
+  function updateProfileUi(data) {
+    const hasProfiles = !!(data && data.has_profile_testing);
+    const trigger = document.getElementById("scope-profile-trigger");
+    const separator = document.getElementById("scope-profile-separator");
+    const wrap = document.getElementById("scope-default-profile-wrap");
+    const defaultProfile = document.getElementById("scope-default-profile");
+    const defaultLink = document.getElementById("scope-default-profile-link");
+    const select = document.getElementById("profile-test-select");
+    const title = document.getElementById("profile-test-modal-title");
+    const body = document.getElementById("profile-test-body");
+    const status = document.getElementById("profile-test-status");
+    const contentType = document.getElementById("profile-test-content-type");
+    const source = document.getElementById("profile-test-source");
+    const url = document.getElementById("profile-test-url");
+    const modal = document.getElementById("profile-test-modal");
+    const modalOpen = !!(modal && modal.classList.contains("show"));
+    const previousSelection = select ? select.value || "__default__" : "__default__";
+
+    if (trigger) {
+      trigger.classList.toggle("d-none", !hasProfiles);
+      trigger.disabled = !hasProfiles;
+    }
+    if (separator) separator.classList.toggle("d-none", !hasProfiles);
+    if (wrap) wrap.classList.toggle("d-none", !hasProfiles);
+
+    if (!hasProfiles) {
+      replaceSelectOptions(select, []);
+      if (title) title.textContent = "Profile response";
+      if (body) body.textContent = "Select a concrete group to test profile responses.";
+      if (status) status.textContent = "—";
+      if (contentType) contentType.textContent = "—";
+      if (source) source.textContent = "—";
+      if (url) {
+        url.textContent = "—";
+        url.removeAttribute("href");
+      }
+      return;
+    }
+
+    if (defaultProfile) {
+      defaultProfile.textContent = data.scope_default_profile || "built-in-json";
+    }
+    if (defaultLink && data.scope_default_profile_href) {
+      defaultLink.textContent = data.scope_default_profile_href;
+      defaultLink.setAttribute("href", data.scope_default_profile_href);
+    }
+
+    replaceSelectOptions(select, data.profile_options, previousSelection);
+    const selectedProfile = select && select.value ? select.value : "__default__";
+    const href = resolveProfileHref(data.active_group, selectedProfile);
+
+    if (title) {
+      title.textContent = data.active_group
+        ? `Profile response: ${data.active_group}`
+        : "Profile response";
+    }
+    if (!modalOpen) {
+      if (body) body.textContent = "Select a profile to fetch the live response.";
+      if (status) status.textContent = "—";
+      if (contentType) contentType.textContent = "—";
+      if (source) source.textContent = href || "—";
+      if (url) {
+        url.textContent = href || "—";
+        if (href) {
+          url.setAttribute("href", href);
+        } else {
+          url.removeAttribute("href");
+        }
+      }
+    }
+  }
 
   // Keep popover placement consistent with the server-rendered buttons.
   // (User explicitly asked to keep it as-is.)
@@ -315,10 +601,10 @@ const HealthzUi = (function () {
 
     if (lastRunIso) {
       const isoSpan = document.createElement("span");
-      isoSpan.className = "font-monospace js-last-iso";
+      isoSpan.className = "font-monospace js-last-local";
       isoSpan.setAttribute("data-datetime", lastRunIso);
       isoSpan.setAttribute("title", lastRunIso);
-      isoSpan.textContent = lastRunIso;
+      isoSpan.textContent = HealthzUi.formatLocalDateTime(lastRunIso) || lastRunIso;
 
       const agoSpan = document.createElement("span");
       agoSpan.className = "text-muted ms-1 hc-last-ago js-last-ago";
@@ -449,14 +735,15 @@ const HealthzUi = (function () {
     // Last
     const tdLast = tr.querySelector("td.hc-col-last");
     if (tdLast) {
-      const isoSpan = tdLast.querySelector(".js-last-iso");
+      const isoSpan = tdLast.querySelector(".js-last-local");
       const agoSpan = tdLast.querySelector(".js-last-ago");
 
       if (check.last_run) {
         if (isoSpan && agoSpan) {
           isoSpan.setAttribute("data-datetime", check.last_run);
           isoSpan.setAttribute("title", check.last_run);
-          isoSpan.textContent = check.last_run;
+          isoSpan.textContent =
+            HealthzUi.formatLocalDateTime(check.last_run) || check.last_run;
           agoSpan.setAttribute("data-datetime", check.last_run);
         } else {
           fillLastCell(tdLast, check.last_run);
@@ -508,6 +795,34 @@ const HealthzUi = (function () {
 
     const refresh = document.getElementById("badge-refresh");
     if (refresh && data.refresh_interval) refresh.textContent = data.refresh_interval;
+
+    const scope = document.getElementById("badge-scope");
+    if (scope && data.active_scope_label) scope.textContent = data.active_scope_label;
+
+    const scopeHelp = document.getElementById("scope-help");
+    if (scopeHelp && data.scope_help) scopeHelp.textContent = data.scope_help;
+
+    const detailsLink = document.getElementById("details-link");
+    if (detailsLink && data.details_href) detailsLink.setAttribute("href", data.details_href);
+
+    const scopeHealthLink = document.getElementById("scope-health-link");
+    if (scopeHealthLink && data.scope_health_href) {
+      scopeHealthLink.setAttribute("href", data.scope_health_href);
+      scopeHealthLink.textContent = data.scope_health_href;
+    }
+
+    const scopeDetailsLink = document.getElementById("scope-details-link");
+    if (scopeDetailsLink && data.details_href) {
+      scopeDetailsLink.setAttribute("href", data.details_href);
+      scopeDetailsLink.textContent = data.details_href;
+    }
+
+    updateProfileUi(data);
+
+    const groupSelect = document.getElementById("group-select");
+    if (groupSelect && typeof data.active_group === "string") {
+      groupSelect.value = data.active_group;
+    }
 
     const updated = document.getElementById("badge-updated");
     if (updated && data.now) {
@@ -571,6 +886,8 @@ const HealthzUi = (function () {
     // Re-attach in sorted order (moves existing nodes, appends new ones).
     desired.forEach((tr) => tbody.appendChild(tr));
 
+    HealthzUi.formatLastLocal(tbody);
+
     // Update "(… ago)" parts.
     if (lastServerNowMs) {
       HealthzUi.formatLastAgo(tbody, lastServerNowMs);
@@ -607,23 +924,30 @@ const HealthzUi = (function () {
     });
   }
 
-  async function fetchSnapshot() {
-    const resp = await fetch("/ui/api/snapshot", {
+  async function fetchSnapshot(href) {
+    const resp = await fetch(href, {
       headers: { Accept: "application/json" },
       cache: "no-store",
     });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching /ui/api/snapshot`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching ${href}`);
     return await resp.json();
   }
 
   async function refreshOnce() {
-    if (inFlight) return;
+    if (inFlight) {
+      refreshQueued = true;
+      return;
+    }
     inFlight = true;
+    const href = currentSnapshotHref();
     try {
-      const data = await fetchSnapshot();
+      const data = await fetchSnapshot(href);
       if (data && data.now) {
         const d = new Date(data.now);
         if (!isNaN(d.getTime())) lastServerNowMs = d.getTime();
+      }
+      if (data && typeof data.active_group === "string") {
+        setActiveGroup(data.active_group);
       }
       updateHeader(data);
       updateSummary(data);
@@ -633,11 +957,16 @@ const HealthzUi = (function () {
       console.warn("UI refresh failed:", e);
     } finally {
       inFlight = false;
+      if (refreshQueued) {
+        refreshQueued = false;
+        refreshOnce();
+      }
     }
   }
 
   document.addEventListener("DOMContentLoaded", () => {
     HealthzUi.formatLocalTimes(document);
+    HealthzUi.formatLastLocal(document);
     HealthzUi.initPopovers(document);
     HealthzUi.formatLastAgo(document);
 
@@ -659,6 +988,7 @@ const HealthzUi = (function () {
       ? parseInt(root.dataset.refreshSecs, 10)
       : 30;
     const refreshMs = Math.max(1000, (isNaN(secs) ? 30 : secs) * 1000);
+    setActiveGroup(getActiveGroup());
 
     // Initial refresh, then interval.
     refreshOnce();
@@ -667,6 +997,7 @@ const HealthzUi = (function () {
     // Wire up filter input + status checkboxes + clear button.
     const filter = document.getElementById("check-filter");
     const clearBtn = document.getElementById("check-filter-clear");
+    const groupSelect = document.getElementById("group-select");
 
     const cbUp = document.getElementById("filter-status-up");
     const cbWarn = document.getElementById("filter-status-warn");
@@ -734,20 +1065,12 @@ const HealthzUi = (function () {
       syncFilterUi();
     }
 
-    if (clearBtn) {
-      clearBtn.addEventListener("click", () => {
-        if (filter) {
-          filter.value = "";
-          filterQuery = "";
-          applyFilter();
-          filter.focus();
-        } else {
-          filterQuery = "";
-          applyFilter();
-        }
-        syncFilterUi();
+    if (groupSelect) {
+      groupSelect.addEventListener("change", () => {
+        setActiveGroup(groupSelect.value || "");
+        window.history.replaceState({}, "", currentUiHref());
+        refreshOnce();
       });
-      syncFilterUi();
     }
   });
 })();

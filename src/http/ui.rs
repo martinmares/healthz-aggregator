@@ -1,9 +1,11 @@
 use askama::Template;
 use axum::{
+    extract::Query,
     Json,
     http::StatusCode,
     response::{Html, IntoResponse},
 };
+use serde::Deserialize;
 use serde::Serialize;
 use std::{sync::Arc, time::SystemTime};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
@@ -33,6 +35,17 @@ struct UiTemplate {
     uptime: String,
     refresh_interval: String,
     refresh_interval_secs: u64,
+    active_group: String,
+    active_scope_label: String,
+    scope_help: String,
+    scope_health_href: String,
+    details_href: String,
+    snapshot_href: String,
+    scope_default_profile: String,
+    scope_default_profile_href: String,
+    has_profile_testing: bool,
+    group_options: Vec<GroupOption>,
+    profile_options: Vec<ProfileOption>,
 
     summary_total: usize,
     summary_up: usize,
@@ -41,6 +54,20 @@ struct UiTemplate {
     summary_critical_down: usize,
 
     checks: Vec<CheckRow>,
+}
+
+#[derive(Debug, Clone)]
+struct GroupOption {
+    value: String,
+    label: String,
+    selected: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ProfileOption {
+    value: String,
+    label: String,
+    selected: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -59,6 +86,15 @@ struct UiSnapshotResponse {
     now: String,
     uptime: String,
     refresh_interval: String,
+    active_group: String,
+    active_scope_label: String,
+    scope_help: String,
+    scope_health_href: String,
+    details_href: String,
+    scope_default_profile: String,
+    scope_default_profile_href: String,
+    has_profile_testing: bool,
+    profile_options: Vec<ProfileOption>,
 
     summary_total: usize,
     summary_up: usize,
@@ -67,6 +103,11 @@ struct UiSnapshotResponse {
     summary_critical_down: usize,
 
     checks: Vec<UiCheckSnapshot>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct UiQuery {
+    group: Option<String>,
 }
 
 fn fmt_rfc3339_opt(st: Option<SystemTime>) -> Option<String> {
@@ -148,13 +189,175 @@ fn error_to_popover_html(error: &str) -> String {
     format!("<div class='hc-popover-lines'>{safe}</div>")
 }
 
-pub async fn ui_handler(state: Arc<AppState>) -> impl IntoResponse {
-    let (aggregate_ok, summary, _failed, _warn) = state.aggregate_snapshot().await;
+pub async fn ui_handler(state: Arc<AppState>, Query(query): Query<UiQuery>) -> impl IntoResponse {
+    let Some(model) = build_ui_model(&state, query.group).await else {
+        return (StatusCode::NOT_FOUND, "group not found").into_response();
+    };
+    let refresh_interval_secs = state.refresh_interval().as_secs().max(1);
+    let tpl = UiTemplate {
+        title: "healthz-aggregator".into(),
+        aggregate_ok: model.aggregate_ok,
+        now: model.now,
+        uptime: model.uptime,
+        refresh_interval: humantime::format_duration(state.refresh_interval()).to_string(),
+        refresh_interval_secs,
+        active_group: model.active_group,
+        active_scope_label: model.active_scope_label,
+        scope_help: model.scope_help,
+        scope_health_href: model.scope_health_href,
+        details_href: model.details_href,
+        snapshot_href: model.snapshot_href,
+        scope_default_profile: model.scope_default_profile,
+        scope_default_profile_href: model.scope_default_profile_href,
+        has_profile_testing: model.has_profile_testing,
+        group_options: model.group_options,
+        profile_options: model.profile_options,
 
-    let mut rows: Vec<CheckRow> = state
-        .snapshot()
-        .await
-        .into_iter()
+        summary_total: model.summary_total,
+        summary_up: model.summary_up,
+        summary_warn: model.summary_warn,
+        summary_down: model.summary_down,
+        summary_critical_down: model.summary_critical_down,
+
+        checks: model.checks,
+    };
+
+    match tpl.render() {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => Html(format!("template error: {e}")).into_response(),
+    }
+}
+
+pub async fn ui_snapshot_handler(
+    state: Arc<AppState>,
+    Query(query): Query<UiQuery>,
+) -> impl IntoResponse {
+    let Some(model) = build_ui_model(&state, query.group).await else {
+        return (StatusCode::NOT_FOUND, "group not found").into_response();
+    };
+    let body = UiSnapshotResponse {
+        aggregate_ok: model.aggregate_ok,
+        now: model.now,
+        uptime: model.uptime,
+        refresh_interval: humantime::format_duration(state.refresh_interval()).to_string(),
+        active_group: model.active_group,
+        active_scope_label: model.active_scope_label,
+        scope_help: model.scope_help,
+        scope_health_href: model.scope_health_href,
+        details_href: model.details_href,
+        scope_default_profile: model.scope_default_profile,
+        scope_default_profile_href: model.scope_default_profile_href,
+        has_profile_testing: model.has_profile_testing,
+        profile_options: model.profile_options,
+
+        summary_total: model.summary_total,
+        summary_up: model.summary_up,
+        summary_warn: model.summary_warn,
+        summary_down: model.summary_down,
+        summary_critical_down: model.summary_critical_down,
+
+        checks: model.snapshot_checks,
+    };
+
+    (StatusCode::OK, Json(body)).into_response()
+}
+
+struct UiModel {
+    aggregate_ok: bool,
+    now: String,
+    uptime: String,
+    active_group: String,
+    active_scope_label: String,
+    scope_help: String,
+    scope_health_href: String,
+    details_href: String,
+    snapshot_href: String,
+    scope_default_profile: String,
+    scope_default_profile_href: String,
+    has_profile_testing: bool,
+    group_options: Vec<GroupOption>,
+    profile_options: Vec<ProfileOption>,
+    summary_total: usize,
+    summary_up: usize,
+    summary_warn: usize,
+    summary_down: usize,
+    summary_critical_down: usize,
+    snapshot_checks: Vec<UiCheckSnapshot>,
+    checks: Vec<CheckRow>,
+}
+
+async fn build_ui_model(state: &AppState, requested_group: Option<String>) -> Option<UiModel> {
+    let selected_group = requested_group
+        .map(|group| group.trim().to_string())
+        .filter(|group| !group.is_empty());
+
+    let (
+        aggregate_ok,
+        summary,
+        mut results,
+        scope_health_href,
+        details_href,
+        active_group,
+        active_scope_label,
+        scope_default_profile,
+        scope_default_profile_href,
+        has_profile_testing,
+        profile_options,
+    ) =
+        if let Some(group_name) = selected_group.clone() {
+            let (aggregate_ok, summary, _failed, _warn) =
+                state.aggregate_snapshot_for_group(&group_name).await?;
+            let results = state.snapshot_for_group(&group_name).await?;
+            let default_profile = state
+                .default_profile_name_for_group(&group_name)
+                .map(str::to_string)
+                .unwrap_or_else(|| "built-in-json".to_string());
+            (
+                aggregate_ok,
+                summary,
+                results,
+                format!("/groups/{group_name}/healthz"),
+                format!("/groups/{group_name}/healthz/details"),
+                group_name.clone(),
+                format!("Group: {group_name}"),
+                default_profile.clone(),
+                format!("/groups/{group_name}/healthz"),
+                true,
+                build_profile_options(state, &group_name, &default_profile),
+            )
+        } else {
+            let (aggregate_ok, summary, _failed, _warn) = state.aggregate_snapshot().await;
+            let results = state.snapshot().await;
+            (
+                aggregate_ok,
+                summary,
+                results,
+                "/healthz/aggregate".to_string(),
+                "/healthz/details".to_string(),
+                String::new(),
+                "All checks".to_string(),
+                String::new(),
+                String::new(),
+                false,
+                Vec::new(),
+            )
+        };
+
+    let mut snapshot_checks: Vec<UiCheckSnapshot> = results
+        .iter()
+        .map(|r| UiCheckSnapshot {
+            name: r.name.clone(),
+            status: status_str(r.status),
+            critical: r.critical,
+            last_run: fmt_rfc3339_opt(r.last_run),
+            error: r.error.clone().unwrap_or_default(),
+            labels: labels_to_vec(r),
+        })
+        .collect();
+    snapshot_checks.sort_by(|a, b| a.name.cmp(&b.name));
+
+    let mut rows: Vec<CheckRow> = results
+        .drain(..)
         .map(|r| {
             let error = r.error.clone().unwrap_or_default();
             CheckRow {
@@ -168,74 +371,78 @@ pub async fn ui_handler(state: Arc<AppState>) -> impl IntoResponse {
             }
         })
         .collect();
-
     rows.sort_by(|a, b| a.name.cmp(&b.name));
 
-    let now = OffsetDateTime::now_utc()
-        .format(&Rfc3339)
-        .unwrap_or_else(|_| "-".into());
+    let snapshot_href = if active_group.is_empty() {
+        "/ui/api/snapshot".to_string()
+    } else {
+        format!("/ui/api/snapshot?group={active_group}")
+    };
 
-    let refresh_interval_secs = state.refresh_interval().as_secs().max(1);
-
-    let tpl = UiTemplate {
-        title: "healthcheck-aggregator".into(),
+    Some(UiModel {
         aggregate_ok,
-        now,
+        now: OffsetDateTime::now_utc()
+            .format(&Rfc3339)
+            .unwrap_or_else(|_| "-".into()),
         uptime: state.uptime(),
-        refresh_interval: humantime::format_duration(state.refresh_interval()).to_string(),
-        refresh_interval_secs,
-
+        active_group: active_group.clone(),
+        active_scope_label,
+        scope_help: "Groups are logical health views. One check can belong to more than one group."
+            .to_string(),
+        scope_health_href,
+        details_href,
+        snapshot_href,
+        scope_default_profile,
+        scope_default_profile_href,
+        has_profile_testing,
+        group_options: build_group_options(state, &active_group),
+        profile_options,
         summary_total: summary.total,
         summary_up: summary.up,
         summary_warn: summary.warn,
         summary_down: summary.down,
         summary_critical_down: summary.critical_down,
-
+        snapshot_checks,
         checks: rows,
-    };
-
-    match tpl.render() {
-        Ok(html) => Html(html).into_response(),
-        Err(e) => Html(format!("template error: {e}")).into_response(),
-    }
+    })
 }
 
-pub async fn ui_snapshot_handler(state: Arc<AppState>) -> impl IntoResponse {
-    let (aggregate_ok, summary, _failed, _warn) = state.aggregate_snapshot().await;
+fn build_group_options(state: &AppState, active_group: &str) -> Vec<GroupOption> {
+    let mut options = vec![GroupOption {
+        value: String::new(),
+        label: format!("All checks ({})", state.check_configs().len()),
+        selected: active_group.is_empty(),
+    }];
+    options.extend(state.group_names().into_iter().map(|name| GroupOption {
+        selected: name == active_group,
+        value: name.clone(),
+        label: format!(
+            "{} ({})",
+            name,
+            state.group_check_count(&name).unwrap_or_default()
+        ),
+    }));
+    options
+}
 
-    let now = OffsetDateTime::now_utc()
-        .format(&Rfc3339)
-        .unwrap_or_else(|_| "-".into());
+fn build_profile_options(
+    state: &AppState,
+    group_name: &str,
+    default_profile: &str,
+) -> Vec<ProfileOption> {
+    let mut options = vec![ProfileOption {
+        value: "__default__".to_string(),
+        label: format!("default endpoint ({default_profile})"),
+        selected: true,
+    }];
 
-    let mut checks: Vec<UiCheckSnapshot> = state
-        .snapshot()
-        .await
-        .into_iter()
-        .map(|r| UiCheckSnapshot {
-            name: r.name.clone(),
-            status: status_str(r.status),
-            critical: r.critical,
-            last_run: fmt_rfc3339_opt(r.last_run),
-            error: r.error.clone().unwrap_or_default(),
-            labels: labels_to_vec(&r),
-        })
-        .collect();
-    checks.sort_by(|a, b| a.name.cmp(&b.name));
+    if let Some(profile_names) = state.profile_names_for_group(group_name) {
+        options.extend(profile_names.into_iter().map(|name| ProfileOption {
+            selected: false,
+            value: name.clone(),
+            label: name,
+        }));
+    }
 
-    let body = UiSnapshotResponse {
-        aggregate_ok,
-        now,
-        uptime: state.uptime(),
-        refresh_interval: humantime::format_duration(state.refresh_interval()).to_string(),
-
-        summary_total: summary.total,
-        summary_up: summary.up,
-        summary_warn: summary.warn,
-        summary_down: summary.down,
-        summary_critical_down: summary.critical_down,
-
-        checks,
-    };
-
-    (StatusCode::OK, Json(body))
+    options
 }

@@ -58,6 +58,10 @@ pub struct Metrics {
     health_up: GaugeVec,
     duration: GaugeVec,
     last_run: GaugeVec,
+    group_up: GaugeVec,
+    group_checks_total: GaugeVec,
+    group_checks_down: GaugeVec,
+    group_checks_warn: GaugeVec,
 
     /// Label names in a fixed order (first is always "check").
     label_names: Vec<String>,
@@ -121,15 +125,57 @@ impl Metrics {
         )
         .unwrap();
 
+        let group_label_refs = ["group"];
+        let group_up = GaugeVec::new(
+            Opts::new(
+                format!("{}{}_group_up", ns, name),
+                "Aggregated group status (1=up, 0=down)",
+            ),
+            &group_label_refs,
+        )
+        .unwrap();
+        let group_checks_total = GaugeVec::new(
+            Opts::new(
+                format!("{}{}_group_checks_total", ns, name),
+                "Total checks in group",
+            ),
+            &group_label_refs,
+        )
+        .unwrap();
+        let group_checks_down = GaugeVec::new(
+            Opts::new(
+                format!("{}{}_group_checks_down", ns, name),
+                "Down checks in group",
+            ),
+            &group_label_refs,
+        )
+        .unwrap();
+        let group_checks_warn = GaugeVec::new(
+            Opts::new(
+                format!("{}{}_group_checks_warn", ns, name),
+                "Warn checks in group",
+            ),
+            &group_label_refs,
+        )
+        .unwrap();
+
         registry.register(Box::new(health_up.clone())).unwrap();
         registry.register(Box::new(duration.clone())).unwrap();
         registry.register(Box::new(last_run.clone())).unwrap();
+        registry.register(Box::new(group_up.clone())).unwrap();
+        registry.register(Box::new(group_checks_total.clone())).unwrap();
+        registry.register(Box::new(group_checks_down.clone())).unwrap();
+        registry.register(Box::new(group_checks_warn.clone())).unwrap();
 
         Self {
             registry,
             health_up,
             duration,
             last_run,
+            group_up,
+            group_checks_total,
+            group_checks_down,
+            group_checks_warn,
             label_names,
             extra_label_keys,
         }
@@ -164,6 +210,26 @@ impl Metrics {
                 self.last_run
                     .with_label_values(&values)
                     .set(epoch.as_secs() as f64);
+            }
+        }
+
+        for group_name in state.group_names() {
+            if let Some((ok, summary, _failed, _warn)) =
+                state.aggregate_snapshot_for_group(&group_name).await
+            {
+                let values = [group_name.as_str()];
+                self.group_up
+                    .with_label_values(&values)
+                    .set(if ok { 1.0 } else { 0.0 });
+                self.group_checks_total
+                    .with_label_values(&values)
+                    .set(summary.total as f64);
+                self.group_checks_down
+                    .with_label_values(&values)
+                    .set(summary.down as f64);
+                self.group_checks_warn
+                    .with_label_values(&values)
+                    .set(summary.warn as f64);
             }
         }
     }

@@ -1,11 +1,11 @@
 [package]
-name = "healthcheck-aggregator"
-version = "0.2.0"
+name = "healthz-aggregator"
+version = "0.4.0"
 edition = "2024"
 
 [dependencies]
 axum = "0.8"
-tokio = { version = "1.49", features = ["rt-multi-thread", "macros", "time", "fs"] }
+tokio = { version = "1.50", features = ["rt-multi-thread", "macros", "time", "fs"] }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml_ng = "0.10"
@@ -21,8 +21,8 @@ regex = "1.12"
 askama = "0.15"
 tower-http = { version = "0.6", features = ["fs"] }
 url = "2.5"
-webbrowser = "1.0"
-clap = { version = "4.5", features = ["derive"] }
+webbrowser = "1.2"
+clap = { version = "4.6", features = ["derive", "env"] }
 
 # Oracle check (feature-gated; requires Oracle client libraries at runtime).
 oracle = { version = "0.6", optional = true }
@@ -41,8 +41,8 @@ futures = "0.3"
 
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-time = { version = "0.3.46", features = ["formatting", "serde"] }
-x509-parser = "0.18.0"
+time = { version = "0.3.47", features = ["formatting", "serde"] }
+x509-parser = "0.18.1"
 
 [features]
 default = []

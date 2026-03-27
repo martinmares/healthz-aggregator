@@ -2,7 +2,10 @@ use axum::{Router, response::Redirect, routing::get};
 use std::sync::Arc;
 use tower_http::services::ServeDir;
 
-use crate::http::healthz::{aggregate_healthz, details_healthz, details_healthz_one, self_healthz};
+use crate::http::healthz::{
+    aggregate_healthz, details_healthz, details_healthz_one, group_aggregate_healthz,
+    group_details_healthz, group_profile_healthz, self_healthz,
+};
 use crate::http::metrics::{Metrics, metrics_handler};
 use crate::http::ui::{ui_handler, ui_snapshot_handler};
 use crate::state::AppState;
@@ -63,12 +66,33 @@ pub fn router(state: Arc<AppState>, metrics: Arc<Metrics>) -> Router {
                 move |path| details_healthz_one(state.clone(), path)
             }),
         )
+        .route(
+            "/groups/{group}/healthz",
+            get({
+                let state = state.clone();
+                move |path| group_aggregate_healthz(state.clone(), path)
+            }),
+        )
+        .route(
+            "/groups/{group}/healthz/profiles/{profile}",
+            get({
+                let state = state.clone();
+                move |path| group_profile_healthz(state.clone(), path)
+            }),
+        )
+        .route(
+            "/groups/{group}/healthz/details",
+            get({
+                let state = state.clone();
+                move |path| group_details_healthz(state.clone(), path)
+            }),
+        )
         // UI (HTML)
         .route(
             "/ui",
             get({
                 let state = state.clone();
-                move || ui_handler(state.clone())
+                move |query| ui_handler(state.clone(), query)
             }),
         )
         // UI data (JSON)
@@ -76,7 +100,7 @@ pub fn router(state: Arc<AppState>, metrics: Arc<Metrics>) -> Router {
             "/ui/api/snapshot",
             get({
                 let state = state.clone();
-                move || ui_snapshot_handler(state.clone())
+                move |query| ui_snapshot_handler(state.clone(), query)
             }),
         )
         // metrics (Prometheus)
