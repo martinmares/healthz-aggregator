@@ -10,9 +10,9 @@ For the Czech version, see [README.cz.md](README.cz.md).
 
 It’s meant to be a pragmatic “single place to look” when your world contains more than one thing that can be on fire.
 
-## TL;DR for L2
+## TL;DR
 
-**Healthz Aggregator** gives L2 one place where they can quickly answer:
+**Healthz Aggregator** gives one place where they can quickly answer:
 
 - is the service/process alive?
 - is the whole application slice healthy?
@@ -27,7 +27,7 @@ In practice it helps when one service depends on multiple things at once:
 - PostgreSQL / Oracle queries
 - local files / config files
 
-Instead of checking each dependency manually, L2 gets:
+Instead of checking each dependency manually, gets:
 
 - one aggregate `/healthz` view
 - group-specific health views for LB or operational slices
