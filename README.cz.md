@@ -6,6 +6,20 @@
 - lehké webové UI
 - Prometheus metriky
 
+**Snímky obrazovky**:
+
+- all checks:
+
+![](images/2026-04-01-12-22-25.png)
+
+- group "public-lb-json":
+
+![](images/2026-04-01-12-22-02.png)
+
+- profile "defaut-json":
+
+![](images/2026-04-01-12-23-59.png)
+
 ## TL;DR
 
 **Healthz Aggregator** dává jedno místo, kde si rychle odpovíš na otázky:

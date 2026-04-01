@@ -10,6 +10,20 @@ For the Czech version, see [README.cz.md](README.cz.md).
 
 It’s meant to be a pragmatic “single place to look” when your world contains more than one thing that can be on fire.
 
+**Some screenshots**:
+
+- all checks:
+
+![](images/2026-04-01-12-22-25.png)
+
+- group "public-lb-json":
+
+![](images/2026-04-01-12-22-02.png)
+
+- profile "defaut-json":
+
+![](images/2026-04-01-12-23-59.png)
+
 ## TL;DR
 
 **Healthz Aggregator** gives one place where they can quickly answer:
