@@ -6,14 +6,12 @@
 - lehké webové UI
 - Prometheus metriky
 
-Je to pragmatické „jedno místo, kam se podívat“, když tvoje služba závisí na více věcech najednou.
+## TL;DR
 
-## TL;DR pro L2
-
-**Healthz Aggregator** dává L2 jedno místo, kde si rychle odpoví:
+**Healthz Aggregator** dává jedno místo, kde si rychle odpovíš na otázky:
 
 - žije proces/služba?
-- je celý aplikační řez zdravý?
+- je celý aplikační stack zdravý?
 - která konkrétní závislost padá?
 - co přesně uvidí load balancer na health endpointu?
 
@@ -25,7 +23,7 @@ V praxi se hodí tam, kde jedna služba závisí zároveň na více věcech:
 - PostgreSQL / Oracle dotazy
 - lokální soubory / konfigurační soubory
 
-Místo ruční kontroly každé závislosti zvlášť dostane L2:
+Místo ruční kontroly každé závislosti zvlášť dostaneš:
 
 - jeden agregovaný pohled přes `/healthz`
 - group-specific health pohledy pro LB nebo provozní řezy
@@ -39,7 +37,7 @@ Crate/binárka se jmenuje **`healthz-aggregator`** a HTTP endpointy schválně d
 Tím pádem:
 
 - název artefaktu popisuje, co to je (agregátor health checků)
-- HTTP surface odpovídá tomu, co provozní tooling běžně očekává
+- HTTP rozhraní používá konvence, které provozní nástroje obvykle očekávají
 
 ## Quick start
 
@@ -75,7 +73,7 @@ cargo build --release
 HEALTHZ_CONFIG=/path/to/config.yaml ./target/release/healthz-aggregator
 ```
 
-Logování používá `tracing`. Verbosity lze řídit přes `RUST_LOG`, např.:
+Logování používá `tracing`. Úroveň lze řídit přes `RUST_LOG`, např.:
 
 ```bash
 RUST_LOG=info ./target/release/healthz-aggregator
@@ -152,8 +150,6 @@ checks:
     status_code: 200
 ```
 
-Větší veřejný demo config je v `.tmp/config-demo.yaml`.
-
 ### Typy checků
 
 Podporované typy checků (viz `src/config.rs`):
@@ -168,20 +164,13 @@ Podporované typy checků (viz `src/config.rs`):
 
 Stručně, co pokrývají:
 
-- `tcp`
-  - základní síťová dostupnost `host:port`
-- `http`
-  - dostupnost HTTP endpointu, status code, match nad headers/body
-- `http_json`
-  - HTTP JSON endpoint s JSONPath extrakcí a validací hodnoty/regexu
-- `tls_cert`
-  - validita certifikátu a kontrola zbývající životnosti
-- `postgres`
-  - SQL konektivita + validace výsledku dotazu
-- `oracle`
-  - SQL konektivita + validace výsledku dotazu pro Oracle
-- `file`
-  - existence a obsah lokálního souboru pro text nebo JSON
+- `tcp` - základní síťová dostupnost `host:port`
+- `http` - dostupnost HTTP endpointu, status code, match nad headers/body
+- `http_json` - HTTP JSON endpoint s JSONPath extrakcí a validací hodnoty/regexu
+- `tls_cert` - validita certifikátu a kontrola zbývající životnosti
+- `postgres` - SQL konektivita + validace výsledku dotazu pro Postgres
+- `oracle` - SQL konektivita + validace výsledku dotazu pro Oracle
+- `file` - existence a obsah lokálního souboru pro text nebo JSON
 
 Každý check může navíc nastavit:
 
@@ -265,17 +254,17 @@ Chování exit code:
 
 ### Details (JSON)
 
-- `GET /healthz/details` – všechny checky + uptime + timestamps
-- `GET /healthz/details/{check_name}` – detail jednoho checku
-- `GET /groups/{group}/healthz/details` – detail checků patřících do jedné group
+- `GET /healthz/details` - všechny checky + uptime + timestamps
+- `GET /healthz/details/{check_name}` - detail jednoho checku
+- `GET /groups/{group}/healthz/details` - detail checků patřících do jedné group
 
 ### UI
 
-- `GET /` – redirect na `/ui`
-- `GET /ui` – HTML UI
-- `GET /ui?group={group}` – HTML UI scoped na jednu group
-- `GET /ui/api/snapshot` – JSON snapshot pro client-side partial refresh (bez full page reloadu)
-- `GET /ui/api/snapshot?group={group}` – scoped snapshot pro jednu group
+- `GET /` - redirect na `/ui`
+- `GET /ui` - HTML UI
+- `GET /ui?group={group}` - HTML UI scoped na jednu group
+- `GET /ui/api/snapshot` - JSON snapshot pro client-side partial refresh (bez full page reloadu)
+- `GET /ui/api/snapshot?group={group}` - scoped snapshot pro jednu group
 
 Statické UI assety:
 
@@ -359,13 +348,6 @@ cargo build --release --features oracle
 ```
 
 Za běhu budeš navíc potřebovat Oracle client knihovny dostupné v prostředí.
-
-## Contributing
-
-Issues i PRs jsou vítané. Pokud přidáváš nový check type, snaž se prosím držet:
-
-- backwards-compatible config schema (YAML je veřejné API)
-- užitečné error message (zobrazují se i v UI popoverech)
 
 ## License
 

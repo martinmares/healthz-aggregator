@@ -154,8 +154,6 @@ checks:
     status_code: 200
 ```
 
-A larger public demo config is available at `.tmp/config-demo.yaml`.
-
 ### Check types
 
 Supported check types (see `src/config.rs`):
@@ -170,20 +168,13 @@ Supported check types (see `src/config.rs`):
 
 Quick summary of what they cover:
 
-- `tcp`
-  - raw network reachability to `host:port`
-- `http`
-  - HTTP endpoint availability, response code, headers/body matching
-- `http_json`
-  - HTTP JSON endpoint with JSONPath extraction and value/regex assertions
-- `tls_cert`
-  - certificate validity and remaining lifetime checks
-- `postgres`
-  - SQL connectivity + query result validation
-- `oracle`
-  - SQL connectivity + query result validation for Oracle
-- `file`
-  - local file existence/content checks for text or JSON
+- `tcp` - raw network reachability to `host:port`
+- `http` - HTTP endpoint availability, response code, headers/body matching
+- `http_json` - HTTP JSON endpoint with JSONPath extraction and value/regex assertions
+- `tls_cert` - certificate validity and remaining lifetime checks
+- `postgres` - SQL connectivity + query result validation
+- `oracle` - SQL connectivity + query result validation for Oracle
+- `file` - local file existence/content checks for text or JSON
 
 Each check can also set:
 
@@ -267,17 +258,17 @@ Exit code behavior:
 
 ### Details (JSON)
 
-- `GET /healthz/details` – all checks + uptime + timestamps
-- `GET /healthz/details/{check_name}` – details for a single check
-- `GET /groups/{group}/healthz/details` – details for checks that belong to a single group
+- `GET /healthz/details` - all checks + uptime + timestamps
+- `GET /healthz/details/{check_name}` - details for a single check
+- `GET /groups/{group}/healthz/details` - details for checks that belong to a single group
 
 ### UI
 
-- `GET /` – redirects to `/ui`
-- `GET /ui` – HTML UI
-- `GET /ui?group={group}` – HTML UI scoped to one group
-- `GET /ui/api/snapshot` – JSON snapshot used for client-side partial refresh (no full-page reload)
-- `GET /ui/api/snapshot?group={group}` – scoped snapshot for one group
+- `GET /` - redirects to `/ui`
+- `GET /ui` - HTML UI
+- `GET /ui?group={group}` - HTML UI scoped to one group
+- `GET /ui/api/snapshot` - JSON snapshot used for client-side partial refresh (no full-page reload)
+- `GET /ui/api/snapshot?group={group}` - scoped snapshot for one group
 
 Static UI assets:
 
@@ -360,13 +351,6 @@ cargo build --release --features oracle
 ```
 
 At runtime you’ll also need Oracle client libraries available in the environment.
-
-## Contributing
-
-Issues and PRs are welcome. If you’re adding a new check type, please try to keep:
-
-- config schema backwards-compatible (YAML is a public API), and
-- error messages useful (they’re surfaced in UI popovers).
 
 ## License
 
