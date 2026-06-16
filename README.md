@@ -1,6 +1,6 @@
 # Healthz Aggregator
 
-For the Czech version, see [README.cz.md](README.cz.md).
+For the Czech version, see [README.cs.md](README.cs.md).
 
 **Healthz Aggregator** is a small Rust service that periodically runs a configurable set of health checks, keeps the latest results in memory, and exposes:
 
@@ -107,6 +107,8 @@ Configuration is YAML and is loaded from:
 
 Durations use the `humantime` format (`30s`, `5m`, `2h`, ...).
 
+Curated example packs are available in `examples/`.
+
 Minimal example:
 
 ```yaml
@@ -117,6 +119,7 @@ global:
   refresh_interval: 30s
   # default_timeout: 10s
   # max_concurrency: 20
+  # history_size: 20
 
 metrics:
   namespace: healthcheck
@@ -151,6 +154,12 @@ groups:
     default_profile: hw-lb-text
     profiles: [hw-lb-text, default-json]
   internal-ui: {}
+
+notifications:
+  webhook:
+    url: https://example.internal/hooks/healthz
+    timeout: 5s
+    on: [down, recovery, warn]
 
 checks:
   - name: router-tcp
@@ -196,6 +205,9 @@ Each check can also set:
   - when `false`, a failing check becomes `WARN` and **does not fail** the aggregate endpoint
 - `groups: [name, ...]`
   - each referenced group must be explicitly defined in top-level `groups:`
+- `debounce:`
+  - `fail_after` - how many consecutive failed raw runs are needed before the effective status flips away from `UP`
+  - `recover_after` - how many consecutive successful raw runs are needed before the effective status returns to `UP`
 - `static_labels:` (per-check labels)
   - merged with `metrics.static_labels` (check-level labels win on key collisions)
 
@@ -209,6 +221,9 @@ Top-level routing/output config:
   - declares reusable OK/FAIL response contracts
   - groups can expose one or more whitelisted profiles
   - if a group has no `default_profile`, the built-in JSON response is used
+- `notifications:`
+  - optional webhook notifications triggered on effective status changes
+  - `on: [down, recovery, warn]` controls which transitions emit events
 
 ### Group design guidelines
 
@@ -274,6 +289,7 @@ Exit code behavior:
 
 - `GET /healthz/details` - all checks + uptime + timestamps
 - `GET /healthz/details/{check_name}` - details for a single check
+- `GET /healthz/details/{check_name}/history` - recent historical states for one check
 - `GET /groups/{group}/healthz/details` - details for checks that belong to a single group
 
 ### UI
@@ -330,6 +346,31 @@ That yields:
 - `GET /groups/public-lb/healthz` -> `OK` or `FAIL`
 - `GET /groups/public-lb/healthz/profiles/hw-lb-text` -> the same explicit contract
 
+### Webhook notification example
+
+```yaml
+notifications:
+  webhook:
+    url: https://example.internal/hooks/healthz
+    timeout: 5s
+    on: [down, recovery, warn]
+```
+
+The webhook receives a JSON payload only when the effective check state changes, for example:
+
+```json
+{
+  "event": "status_change",
+  "check_name": "example-http",
+  "critical": true,
+  "old_status": "up",
+  "new_status": "down",
+  "timestamp": "2026-04-01T12:34:56Z",
+  "error": "check timed out after 5s",
+  "groups": ["public-lb", "web-public"]
+}
+```
+
 ## Kubernetes probes (example)
 
 ```yaml
@@ -354,6 +395,7 @@ The UI is built with Tabler/Bootstrap and supports:
 - status toggles (UP/WARN/DOWN); if nothing is selected, nothing is shown
 - popovers on hover for `Error` and `Labels` (placement **left**)
 - a modal for per-check JSON details (fetched from `/healthz/details/{check_name}`)
+- recent state trends for each check (small dot timeline)
 - a scrollable table body to keep the page compact
 
 ## Optional: Oracle check feature

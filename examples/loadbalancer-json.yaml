@@ -1,0 +1,59 @@
+server:
+  bind: 0.0.0.0:8998
+
+global:
+  refresh_interval: 15s
+  default_timeout: 5s
+  history_size: 20
+
+response_profiles:
+  default-json:
+    ok:
+      status_code: 200
+      content_type: application/json
+      body: '{"status":"ok"}'
+    fail:
+      status_code: 503
+      content_type: application/json
+      body: '{"status":"failed"}'
+
+  hw-lb-json:
+    ok:
+      status_code: 200
+      content_type: application/json
+      body: '{"status":"OK"}'
+    fail:
+      status_code: 503
+      content_type: application/json
+      body: '{"status":"FAILED"}'
+
+groups:
+  public-lb-json:
+    default_profile: hw-lb-json
+    profiles: [hw-lb-json, default-json]
+
+checks:
+  - name: google-dns-tcp
+    groups: [public-lb-json]
+    type: tcp
+    host: 8.8.8.8
+    port: 53
+    timeout: 2s
+    critical: true
+
+  - name: httpbin-json-author
+    groups: [public-lb-json]
+    type: http_json
+    url: https://httpbin.org/json
+    method: GET
+    timeout: 5s
+    tls_verify: true
+    headers:
+      Accept: application/json
+    status_code: 200
+    json_path: $.slideshow.author
+    expected_value: Yours Truly
+    critical: true
+    debounce:
+      fail_after: 2
+      recover_after: 2

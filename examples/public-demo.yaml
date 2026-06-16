@@ -1,0 +1,168 @@
+server:
+  bind: 0.0.0.0:8998
+
+global:
+  refresh_interval: 5s
+  default_timeout: 8s
+  history_size: 12
+
+metrics:
+  namespace: demo
+  name: healthz
+  static_labels:
+    env: public-demo
+    owner: healthz-aggregator
+
+# Optional webhook notifications on effective state changes.
+# notifications:
+#   webhook:
+#     url: http://127.0.0.1:9999/hooks/healthz
+#     timeout: 5s
+#     on: [down, recovery, warn]
+
+response_profiles:
+  default-json:
+    ok:
+      status_code: 200
+      content_type: application/json
+      body: '{"status":"ok"}'
+    fail:
+      status_code: 503
+      content_type: application/json
+      body: '{"status":"failed"}'
+
+  hw-lb-text:
+    ok:
+      status_code: 200
+      content_type: text/plain; charset=utf-8
+      body: OK
+    fail:
+      status_code: 503
+      content_type: text/plain; charset=utf-8
+      body: FAIL
+
+  hw-lb-json:
+    ok:
+      status_code: 200
+      content_type: application/json
+      body: '{"status":"OK"}'
+    fail:
+      status_code: 503
+      content_type: application/json
+      body: '{"status":"FAILED"}'
+
+groups:
+  public-lb-text:
+    default_profile: hw-lb-text
+    profiles: [hw-lb-text, default-json]
+  public-lb-json:
+    default_profile: hw-lb-json
+    profiles: [hw-lb-json, default-json]
+  web-public:
+    default_profile: default-json
+    profiles: [default-json]
+  dns-edge:
+    default_profile: default-json
+    profiles: [default-json, hw-lb-text]
+  certificates:
+    default_profile: default-json
+    profiles: [default-json, hw-lb-text]
+  local-files:
+    default_profile: default-json
+    profiles: [default-json]
+
+checks:
+  - name: cloudflare-dns-tcp
+    groups: [public-lb-text, dns-edge]
+    type: tcp
+    host: 1.1.1.1
+    port: 53
+    timeout: 2s
+    critical: true
+
+  - name: google-dns-tcp
+    groups: [public-lb-json, dns-edge]
+    type: tcp
+    host: 8.8.8.8
+    port: 53
+    timeout: 2s
+    critical: true
+
+  - name: example-http
+    groups: [public-lb-text, public-lb-json, web-public]
+    type: http
+    url: https://example.com
+    method: GET
+    timeout: 5s
+    tls_verify: true
+    status_code: 200
+    expected_body_substring: Example Domain
+    critical: true
+    debounce:
+      fail_after: 2
+      recover_after: 2
+
+  - name: httpbin-flaky-timeout
+    groups: [web-public]
+    type: http
+    url: https://httpbin.org/delay/1
+    method: GET
+    timeout: 900ms
+    tls_verify: true
+    status_code: 200
+    critical: false
+
+  - name: httpbin-json-slideshow-author
+    groups: [public-lb-json, web-public]
+    type: http_json
+    url: https://httpbin.org/json
+    method: GET
+    timeout: 5s
+    tls_verify: true
+    headers:
+      Accept: application/json
+    status_code: 200
+    json_path: $.slideshow.author
+    expected_value: Yours Truly
+    critical: true
+    debounce:
+      fail_after: 2
+      recover_after: 2
+
+  - name: example-cert-valid
+    groups: [public-lb-text, certificates]
+    type: tls_cert
+    url: https://example.com
+    timeout: 5s
+    tls_verify: true
+    min_days_remaining: 14
+    critical: true
+
+  - name: expired-badssl-cert
+    groups: [certificates]
+    type: tls_cert
+    url: https://expired.badssl.com
+    timeout: 5s
+    tls_verify: false
+    min_days_remaining: 7
+    critical: false
+    debounce:
+      fail_after: 2
+      recover_after: 2
+
+  - name: demo-text-file-substring
+    groups: [local-files]
+    type: file
+    path: examples/demo-app.conf
+    format: text
+    expected_contains: enabled=true
+    critical: true
+
+  - name: demo-json-file-exact
+    groups: [local-files]
+    type: file
+    path: examples/demo-app.json
+    format: json
+    json_path: $.featureFlags.coolThing
+    expected_value: "true"
+    critical: true

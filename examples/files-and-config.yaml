@@ -1,0 +1,51 @@
+server:
+  bind: 127.0.0.1:8998
+
+global:
+  refresh_interval: 10s
+  history_size: 20
+
+groups:
+  local-files:
+    profiles: []
+
+checks:
+  - name: demo-text-file-exists
+    groups: [local-files]
+    type: file
+    path: examples/demo-app.conf
+    critical: true
+
+  - name: demo-text-file-substring
+    groups: [local-files]
+    type: file
+    path: examples/demo-app.conf
+    format: text
+    expected_contains: enabled=true
+    critical: true
+
+  - name: demo-text-file-regex
+    groups: [local-files]
+    type: file
+    path: examples/demo-app.conf
+    format: text
+    expected_regex: (?m)^mode\\s*=\\s*demo$
+    critical: false
+
+  - name: demo-json-file-exact
+    groups: [local-files]
+    type: file
+    path: examples/demo-app.json
+    format: json
+    json_path: $.featureFlags.coolThing
+    expected_value: "true"
+    critical: true
+
+  - name: demo-json-file-substring
+    groups: [local-files]
+    type: file
+    path: examples/demo-app.json
+    format: json
+    json_path: $.service.name
+    expected_contains: demo
+    critical: false

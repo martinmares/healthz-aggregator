@@ -1,0 +1,30 @@
+server:
+  bind: 0.0.0.0:8998
+
+global:
+  refresh_interval: 30s
+  default_timeout: 8s
+  history_size: 20
+
+groups:
+  certificates:
+    profiles: []
+
+checks:
+  - name: example-cert-valid
+    groups: [certificates]
+    type: tls_cert
+    url: https://example.com
+    timeout: 5s
+    tls_verify: true
+    min_days_remaining: 14
+    critical: true
+
+  - name: expired-badssl-cert
+    groups: [certificates]
+    type: tls_cert
+    url: https://expired.badssl.com
+    timeout: 5s
+    tls_verify: false
+    min_days_remaining: 7
+    critical: false

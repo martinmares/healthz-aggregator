@@ -103,6 +103,8 @@ Konfigurace je v YAML a načítá se z:
 
 Časové hodnoty používají formát `humantime` (`30s`, `5m`, `2h`, ...).
 
+Kurátorované example packs jsou v `examples/`.
+
 Minimální příklad:
 
 ```yaml
@@ -113,6 +115,7 @@ global:
   refresh_interval: 30s
   # default_timeout: 10s
   # max_concurrency: 20
+  # history_size: 20
 
 metrics:
   namespace: healthcheck
@@ -147,6 +150,12 @@ groups:
     default_profile: hw-lb-text
     profiles: [hw-lb-text, default-json]
   internal-ui: {}
+
+notifications:
+  webhook:
+    url: https://example.internal/hooks/healthz
+    timeout: 5s
+    on: [down, recovery, warn]
 
 checks:
   - name: router-tcp
@@ -192,6 +201,9 @@ Každý check může navíc nastavit:
   - pokud je `false`, failing check spadne do `WARN` a **neshodí** agregovaný endpoint
 - `groups: [name, ...]`
   - každá referencovaná group musí být explicitně definovaná v top-level `groups:`
+- `debounce:`
+  - `fail_after` - kolik po sobě jdoucích failed raw běhů je potřeba, než se efektivní stav přepne z `UP`
+  - `recover_after` - kolik po sobě jdoucích úspěšných raw běhů je potřeba, než se efektivní stav vrátí do `UP`
 - `static_labels:` (per-check labely)
   - sloučí se s `metrics.static_labels` (per-check labely mají při kolizi přednost)
 
@@ -205,6 +217,9 @@ Top-level routing/output konfigurace:
   - deklaruje znovupoužitelné OK/FAIL response kontrakty
   - groups mohou publikovat jeden nebo více whitelisted profilů
   - pokud group nemá `default_profile`, použije se built-in JSON response
+- `notifications:`
+  - volitelné webhook notifikace spouštěné při změně efektivního stavu
+  - `on: [down, recovery, warn]` určuje, které přechody budou emitovat event
 
 ### Doporučení pro návrh groups
 
@@ -268,9 +283,10 @@ Chování exit code:
 
 ### Details (JSON)
 
-- `GET /healthz/details` - všechny checky + uptime + timestamps
-- `GET /healthz/details/{check_name}` - detail jednoho checku
-- `GET /groups/{group}/healthz/details` - detail checků patřících do jedné group
+- `GET /healthz/details` – všechny checky + uptime + timestamps
+- `GET /healthz/details/{check_name}` – detail jednoho checku
+- `GET /healthz/details/{check_name}/history` – nedávná historie stavů jednoho checku
+- `GET /groups/{group}/healthz/details` – detail checků patřících do jedné group
 
 ### UI
 
@@ -326,6 +342,31 @@ To pak dává:
 - `GET /groups/public-lb/healthz` -> `OK` nebo `FAIL`
 - `GET /groups/public-lb/healthz/profiles/hw-lb-text` -> stejný explicitní kontrakt
 
+### Příklad webhook notifikace
+
+```yaml
+notifications:
+  webhook:
+    url: https://example.internal/hooks/healthz
+    timeout: 5s
+    on: [down, recovery, warn]
+```
+
+Webhook dostane JSON payload jen při změně efektivního stavu checku, například:
+
+```json
+{
+  "event": "status_change",
+  "check_name": "example-http",
+  "critical": true,
+  "old_status": "up",
+  "new_status": "down",
+  "timestamp": "2026-04-01T12:34:56Z",
+  "error": "check timed out after 5s",
+  "groups": ["public-lb", "web-public"]
+}
+```
+
 ## Kubernetes probes (příklad)
 
 ```yaml
@@ -350,6 +391,7 @@ UI je postavené na Tabler/Bootstrap a podporuje:
 - status toggles (UP/WARN/DOWN); pokud není vybráno nic, nezobrazí se nic
 - hover popovery pro `Error` a `Labels` (placement **left**)
 - modální okno pro JSON detail jednotlivého checku (fetched z `/healthz/details/{check_name}`)
+- malé trendy posledních stavů pro každý check (barevné tečky)
 - `test profile` modal pro live ověření group health response přes whitelisted profiles
 - scrollovatelný obsah tabulky, aby stránka zůstala kompaktní
 
@@ -362,10 +404,6 @@ cargo build --release --features oracle
 ```
 
 Za běhu budeš navíc potřebovat Oracle client knihovny dostupné v prostředí.
-
-## License
-
-Projekt je licencovaný pod MIT License. Detaily viz [LICENSE](LICENSE).
 
 ## Autor
 
