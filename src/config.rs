@@ -7,6 +7,7 @@ pub struct Config {
     pub server: ServerConfig,
     pub global: GlobalConfig,
     pub metrics: Option<MetricsConfig>,
+    pub notifications: Option<NotificationsConfig>,
     #[serde(default)]
     pub response_profiles: HashMap<String, ResponseProfileConfig>,
     #[serde(default)]
@@ -34,6 +35,10 @@ pub struct GlobalConfig {
     /// If not set, all checks run concurrently.
     #[serde(default)]
     pub max_concurrency: Option<usize>,
+
+    /// Number of historical results kept in memory per check.
+    #[serde(default = "default_history_size")]
+    pub history_size: usize,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -44,6 +49,28 @@ pub struct MetricsConfig {
     /// Global labels applied to all metrics (env/cluster/...).
     /// These are also merged into each check's labels (check-level labels override).
     pub static_labels: Option<HashMap<String, String>>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct NotificationsConfig {
+    pub webhook: Option<WebhookNotificationConfig>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct WebhookNotificationConfig {
+    pub url: String,
+    #[serde(with = "humantime_serde", default = "default_webhook_timeout")]
+    pub timeout: Duration,
+    #[serde(default = "default_webhook_events")]
+    pub on: Vec<WebhookNotificationEvent>,
+}
+
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WebhookNotificationEvent {
+    Down,
+    Recovery,
+    Warn,
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
@@ -70,6 +97,23 @@ pub struct GroupConfig {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+pub struct DebouncePolicyConfig {
+    #[serde(default = "default_threshold_one")]
+    pub fail_after: usize,
+    #[serde(default = "default_threshold_one")]
+    pub recover_after: usize,
+}
+
+impl Default for DebouncePolicyConfig {
+    fn default() -> Self {
+        Self {
+            fail_after: 1,
+            recover_after: 1,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct CheckConfig {
     pub name: String,
 
@@ -83,6 +127,9 @@ pub struct CheckConfig {
 
     #[serde(default)]
     pub groups: Vec<String>,
+
+    #[serde(default)]
+    pub debounce: DebouncePolicyConfig,
 
     #[serde(flatten)]
     pub spec: CheckSpec,
@@ -226,6 +273,26 @@ fn default_true() -> bool {
     true
 }
 
+fn default_history_size() -> usize {
+    20
+}
+
+fn default_threshold_one() -> usize {
+    1
+}
+
+fn default_webhook_timeout() -> Duration {
+    Duration::from_secs(5)
+}
+
+fn default_webhook_events() -> Vec<WebhookNotificationEvent> {
+    vec![
+        WebhookNotificationEvent::Down,
+        WebhookNotificationEvent::Recovery,
+        WebhookNotificationEvent::Warn,
+    ]
+}
+
 impl Config {
     pub fn load_from_path(path: Option<&str>) -> anyhow::Result<Self> {
         let path = path.unwrap_or("config.yaml");
@@ -264,6 +331,12 @@ impl Config {
         }
 
         for check in &self.checks {
+            if check.debounce.fail_after == 0 {
+                bail!("check '{}' has invalid debounce.fail_after=0", check.name);
+            }
+            if check.debounce.recover_after == 0 {
+                bail!("check '{}' has invalid debounce.recover_after=0", check.name);
+            }
             for group_name in &check.groups {
                 if !self.groups.contains_key(group_name) {
                     bail!(
@@ -272,6 +345,15 @@ impl Config {
                         group_name
                     );
                 }
+            }
+        }
+
+        if let Some(webhook) = self.notifications.as_ref().and_then(|n| n.webhook.as_ref()) {
+            if webhook.url.trim().is_empty() {
+                bail!("notifications.webhook.url must not be empty");
+            }
+            if webhook.on.is_empty() {
+                bail!("notifications.webhook.on must not be empty");
             }
         }
 

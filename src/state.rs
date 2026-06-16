@@ -1,10 +1,11 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     time::{Duration, Instant, SystemTime},
 };
 use tokio::sync::RwLock;
 
-use crate::config::{CheckConfig, Config, ResponseProfileConfig};
+use crate::config::{CheckConfig, Config, DebouncePolicyConfig, ResponseProfileConfig};
+use crate::notifier::{NotificationEventType, StatusChangeEvent, now_rfc3339};
 use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -32,12 +33,16 @@ pub struct CheckResult {
 pub struct AppState {
     start: Instant,
     refresh_interval: Duration,
+    history_size: usize,
 
     global_labels: HashMap<String, String>,
     checks: Vec<CheckConfig>,
+    debounce_policies: HashMap<String, DebouncePolicyConfig>,
+    check_groups: HashMap<String, Vec<String>>,
     groups: HashMap<String, GroupState>,
     response_profiles: HashMap<String, ResponseProfileConfig>,
     results: RwLock<HashMap<String, CheckResult>>,
+    history: RwLock<HashMap<String, VecDeque<CheckHistoryEntry>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -54,6 +59,16 @@ pub struct AggregateSummary {
     pub warn: usize,
     pub down: usize,
     pub critical_down: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CheckHistoryEntry {
+    pub raw_status: CheckStatus,
+    pub status: CheckStatus,
+    pub critical: bool,
+    pub timestamp: SystemTime,
+    pub duration: Option<Duration>,
+    pub error: Option<String>,
 }
 
 fn sanitize_label_name(name: &str) -> String {
@@ -98,8 +113,12 @@ impl AppState {
             .collect();
 
         let mut map = HashMap::new();
+        let mut debounce_policies = HashMap::new();
+        let mut check_groups = HashMap::new();
         for c in &cfg.checks {
             let labels = Self::merge_labels(&global_labels, &c.static_labels);
+            debounce_policies.insert(c.name.clone(), c.debounce.clone());
+            check_groups.insert(c.name.clone(), c.groups.clone());
 
             map.insert(
                 c.name.clone(),
@@ -139,11 +158,15 @@ impl AppState {
         Self {
             start: Instant::now(),
             refresh_interval,
+            history_size: cfg.global.history_size,
             global_labels,
             checks: cfg.checks.clone(),
+            debounce_policies,
+            check_groups,
             groups,
             response_profiles: cfg.response_profiles.clone(),
             results: RwLock::new(map),
+            history: RwLock::new(HashMap::new()),
         }
     }
 
@@ -205,8 +228,59 @@ impl AppState {
         self.groups.get(name).map(|group| group.check_names.len())
     }
 
-    pub async fn update(&self, r: CheckResult) {
-        self.results.write().await.insert(r.name.clone(), r);
+    pub async fn update(&self, r: CheckResult) -> Option<StatusChangeEvent> {
+        let policy = self
+            .debounce_policies
+            .get(&r.name)
+            .cloned()
+            .unwrap_or_default();
+
+        let mut results = self.results.write().await;
+        let previous = results.get(&r.name).cloned();
+        let mut history = self.history.write().await;
+        let entries = history.entry(r.name.clone()).or_default();
+        let effective = apply_debounce(previous.as_ref(), entries, &policy, &r);
+
+        let history_entry = effective.last_run.map(|timestamp| CheckHistoryEntry {
+            raw_status: r.status,
+            status: effective.status,
+            critical: effective.critical,
+            timestamp,
+            duration: effective.duration,
+            error: effective.error.clone(),
+        });
+
+        results.insert(effective.name.clone(), effective.clone());
+
+        if let Some(entry) = history_entry {
+            entries.push_back(entry);
+            while entries.len() > self.history_size {
+                entries.pop_front();
+            }
+        }
+
+        let previous = previous?;
+        if previous.last_run.is_none() || previous.status == effective.status {
+            return None;
+        }
+
+        Some(StatusChangeEvent {
+            event: NotificationEventType::StatusChange,
+            check_name: effective.name.clone(),
+            critical: effective.critical,
+            old_status: previous.status,
+            new_status: effective.status,
+            timestamp: effective
+                .last_run
+                .map(now_rfc3339)
+                .unwrap_or_else(|| "-".to_string()),
+            error: effective.error.clone(),
+            groups: self
+                .check_groups
+                .get(&effective.name)
+                .cloned()
+                .unwrap_or_default(),
+        })
     }
 
     pub async fn snapshot(&self) -> Vec<CheckResult> {
@@ -295,6 +369,30 @@ impl AppState {
         self.results.read().await.get(check_name).cloned()
     }
 
+    pub async fn history_for_check(&self, check_name: &str) -> Option<Vec<CheckHistoryEntry>> {
+        if !self.results.read().await.contains_key(check_name) {
+            return None;
+        }
+
+        let history = self.history.read().await;
+        let entries = history.get(check_name).cloned().unwrap_or_default();
+        Some(entries.into_iter().collect())
+    }
+
+    pub async fn recent_history_snapshot(&self, limit: usize) -> HashMap<String, Vec<CheckHistoryEntry>> {
+        let history = self.history.read().await;
+        history
+            .iter()
+            .map(|(check_name, entries)| {
+                let start = entries.len().saturating_sub(limit);
+                (
+                    check_name.clone(),
+                    entries.iter().skip(start).cloned().collect(),
+                )
+            })
+            .collect()
+    }
+
     pub fn uptime(&self) -> String {
         // Human-friendly uptime for UI. Keep it stable and readable for L2.
         // Examples: "7.428 s", "3m 12s", "2h 05m", "1d 4h".
@@ -326,14 +424,68 @@ impl AppState {
     }
 }
 
+fn apply_debounce(
+    previous: Option<&CheckResult>,
+    history: &VecDeque<CheckHistoryEntry>,
+    policy: &DebouncePolicyConfig,
+    current: &CheckResult,
+) -> CheckResult {
+    let previous_status = previous.map(|result| result.status);
+    let mut effective = current.clone();
+
+    match current.status {
+        CheckStatus::Up => {
+            if previous_status != Some(CheckStatus::Up)
+                && consecutive_raw_matches(history, CheckStatus::Up) + 1 < policy.recover_after
+            {
+                if let Some(previous) = previous {
+                    effective.status = previous.status;
+                    effective.error = previous.error.clone();
+                }
+            } else {
+                effective.error = None;
+            }
+        }
+        failure_status => {
+            if previous_status == Some(CheckStatus::Up)
+                && consecutive_non_up(history) + 1 < policy.fail_after
+            {
+                effective.status = CheckStatus::Up;
+                effective.error = None;
+            } else {
+                effective.status = failure_status;
+            }
+        }
+    }
+
+    effective
+}
+
+fn consecutive_raw_matches(history: &VecDeque<CheckHistoryEntry>, wanted: CheckStatus) -> usize {
+    history
+        .iter()
+        .rev()
+        .take_while(|entry| entry.raw_status == wanted)
+        .count()
+}
+
+fn consecutive_non_up(history: &VecDeque<CheckHistoryEntry>) -> usize {
+    history
+        .iter()
+        .rev()
+        .take_while(|entry| entry.raw_status != CheckStatus::Up)
+        .count()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{AppState, CheckResult, CheckStatus, sanitize_label_name};
     use crate::config::{
-        CheckConfig, CheckSpec, Config, GlobalConfig, GroupConfig, ResponseProfileConfig,
+        CheckConfig, CheckSpec, Config, DebouncePolicyConfig, GlobalConfig, GroupConfig,
+        ResponseProfileConfig,
         ServerConfig,
     };
-    use std::{collections::HashMap, time::Duration};
+    use std::{collections::HashMap, time::{Duration, SystemTime}};
 
     #[test]
     fn sanitize_label_name_basic() {
@@ -347,7 +499,7 @@ mod tests {
     async fn aggregates_only_checks_in_selected_group() {
         let state = AppState::new(&test_config());
 
-        state
+        let _ = state
             .update(CheckResult {
                 name: "public-api".to_string(),
                 status: CheckStatus::Up,
@@ -358,7 +510,7 @@ mod tests {
                 labels: HashMap::new(),
             })
             .await;
-        state
+        let _ = state
             .update(CheckResult {
                 name: "internal-db".to_string(),
                 status: CheckStatus::Down,
@@ -383,6 +535,132 @@ mod tests {
         assert!(warned.is_empty());
     }
 
+    #[tokio::test]
+    async fn keeps_only_last_n_history_entries() {
+        let mut cfg = test_config();
+        cfg.global.history_size = 2;
+        let state = AppState::new(&cfg);
+
+        for status in [CheckStatus::Up, CheckStatus::Warn, CheckStatus::Down] {
+            let _ = state
+                .update(CheckResult {
+                    name: "public-api".to_string(),
+                    status,
+                    critical: true,
+                    last_run: Some(SystemTime::now()),
+                    duration: None,
+                    error: None,
+                    labels: HashMap::new(),
+                })
+                .await;
+        }
+
+        let history = state
+            .history_for_check("public-api")
+            .await
+            .expect("history should exist");
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].status, CheckStatus::Warn);
+        assert_eq!(history[1].status, CheckStatus::Down);
+    }
+
+    #[tokio::test]
+    async fn applies_fail_and_recover_debounce_thresholds() {
+        let mut cfg = test_config();
+        cfg.checks[0].debounce = DebouncePolicyConfig {
+            fail_after: 2,
+            recover_after: 2,
+        };
+        let state = AppState::new(&cfg);
+
+        let _ = state
+            .update(CheckResult {
+                name: "public-api".to_string(),
+                status: CheckStatus::Up,
+                critical: true,
+                last_run: Some(SystemTime::now()),
+                duration: None,
+                error: None,
+                labels: HashMap::new(),
+            })
+            .await;
+        let _ = state
+            .update(CheckResult {
+                name: "public-api".to_string(),
+                status: CheckStatus::Up,
+                critical: true,
+                last_run: Some(SystemTime::now()),
+                duration: None,
+                error: None,
+                labels: HashMap::new(),
+            })
+            .await;
+
+        let _ = state
+            .update(CheckResult {
+                name: "public-api".to_string(),
+                status: CheckStatus::Down,
+                critical: true,
+                last_run: Some(SystemTime::now()),
+                duration: None,
+                error: Some("first failure".to_string()),
+                labels: HashMap::new(),
+            })
+            .await;
+        assert_eq!(
+            state.get("public-api").await.expect("check exists").status,
+            CheckStatus::Up
+        );
+
+        let _ = state
+            .update(CheckResult {
+                name: "public-api".to_string(),
+                status: CheckStatus::Down,
+                critical: true,
+                last_run: Some(SystemTime::now()),
+                duration: None,
+                error: Some("second failure".to_string()),
+                labels: HashMap::new(),
+            })
+            .await;
+        assert_eq!(
+            state.get("public-api").await.expect("check exists").status,
+            CheckStatus::Down
+        );
+
+        let _ = state
+            .update(CheckResult {
+                name: "public-api".to_string(),
+                status: CheckStatus::Up,
+                critical: true,
+                last_run: Some(SystemTime::now()),
+                duration: None,
+                error: None,
+                labels: HashMap::new(),
+            })
+            .await;
+        assert_eq!(
+            state.get("public-api").await.expect("check exists").status,
+            CheckStatus::Down
+        );
+
+        let _ = state
+            .update(CheckResult {
+                name: "public-api".to_string(),
+                status: CheckStatus::Up,
+                critical: true,
+                last_run: Some(SystemTime::now()),
+                duration: None,
+                error: None,
+                labels: HashMap::new(),
+            })
+            .await;
+        assert_eq!(
+            state.get("public-api").await.expect("check exists").status,
+            CheckStatus::Up
+        );
+    }
+
     fn test_config() -> Config {
         let mut response_profiles = HashMap::new();
         response_profiles.insert("hw-lb".to_string(), ResponseProfileConfig::default());
@@ -405,8 +683,10 @@ mod tests {
                 refresh_interval: Duration::from_secs(30),
                 default_timeout: None,
                 max_concurrency: None,
+                history_size: 20,
             },
             metrics: None,
+            notifications: None,
             response_profiles,
             groups,
             checks: vec![
@@ -415,6 +695,7 @@ mod tests {
                     critical: true,
                     static_labels: HashMap::new(),
                     groups: vec!["public-lb".to_string()],
+                    debounce: DebouncePolicyConfig::default(),
                     spec: CheckSpec::Tcp {
                         host: "localhost".to_string(),
                         port: 80,
@@ -426,6 +707,7 @@ mod tests {
                     critical: true,
                     static_labels: HashMap::new(),
                     groups: vec!["internal-ui".to_string()],
+                    debounce: DebouncePolicyConfig::default(),
                     spec: CheckSpec::Tcp {
                         host: "localhost".to_string(),
                         port: 5432,

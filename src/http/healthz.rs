@@ -10,7 +10,7 @@ use time::OffsetDateTime;
 
 use crate::{
     config::{ResponseProfileConfig, ResponseSpecConfig},
-    state::{AppState, CheckResult},
+    state::{AppState, CheckHistoryEntry, CheckResult},
 };
 
 #[derive(Serialize)]
@@ -27,6 +27,13 @@ struct DetailsResponse {
     uptime: String,
     timestamp: String,
     checks: Vec<CheckResult>,
+}
+
+#[derive(Serialize)]
+struct CheckHistoryResponse {
+    check_name: String,
+    timestamp: String,
+    history: Vec<CheckHistoryEntry>,
 }
 
 pub async fn self_healthz() -> impl IntoResponse {
@@ -121,6 +128,23 @@ pub async fn details_healthz_one(
         return (StatusCode::OK, Json(r)).into_response();
     }
     (StatusCode::NOT_FOUND, "check not found").into_response()
+}
+
+pub async fn details_healthz_history(
+    state: Arc<AppState>,
+    Path(check_name): Path<String>,
+) -> impl IntoResponse {
+    let Some(history) = state.history_for_check(&check_name).await else {
+        return (StatusCode::NOT_FOUND, "check not found").into_response();
+    };
+
+    let body = CheckHistoryResponse {
+        check_name,
+        timestamp: now_rfc3339(),
+        history,
+    };
+
+    (StatusCode::OK, Json(body)).into_response()
 }
 
 fn aggregate_response(

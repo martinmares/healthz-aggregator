@@ -14,9 +14,9 @@
 [*] Rozšířit UI o `test profile` modal pro ověření live LB response nad aktivní group.
 [*] Přidat group-level Prometheus metriky vedle stávajících check-level metrik.
 [*] Přidat one-shot CLI režim pro `--validate`, `--run-once`, `--check` a `--group`, vhodný pro CI/CD.
-[ ] Přidat state history pro posledních N výsledků checku jako základ pro debounce, UI trendy a notifikace.
-[ ] Přidat debounce / threshold policy nad historií stavů.
-[ ] Přidat UI trendy nad historií stavů.
-[ ] Připravit export/import example packs pro běžné scénáře.
-[ ] Přidat notifications při změně stavu.
+[*] Přidat state history pro posledních N výsledků checku jako základ pro debounce, UI trendy a notifikace.
+[*] Přidat debounce / threshold policy nad historií stavů.
+[*] Přidat UI trendy nad historií stavů.
+[*] Připravit export/import example packs pro běžné scénáře.
+[*] Přidat notifications při změně stavu.
 [*] Doplnit README o TL;DR pro L2 a stručný přehled podporovaných checků.

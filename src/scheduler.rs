@@ -1,5 +1,6 @@
 use crate::{
     checks,
+    notifier::WebhookNotifier,
     config::CheckSpec,
     state::{AppState, CheckResult, CheckStatus},
 };
@@ -13,6 +14,7 @@ pub fn spawn(
     interval: std::time::Duration,
     max_concurrency: Option<usize>,
     default_timeout: Option<std::time::Duration>,
+    notifier: Option<Arc<WebhookNotifier>>,
 ) {
     tracing::info!(interval = ?interval, max_concurrency = ?max_concurrency, "scheduler started");
 
@@ -20,7 +22,13 @@ pub fn spawn(
 
     tokio::spawn(async move {
         loop {
-            run_once(state.clone(), semaphore.clone(), default_timeout).await;
+            run_once(
+                state.clone(),
+                semaphore.clone(),
+                default_timeout,
+                notifier.clone(),
+            )
+            .await;
             tokio::time::sleep(interval).await;
         }
     });
@@ -30,9 +38,10 @@ pub async fn run_once(
     state: Arc<AppState>,
     semaphore: Option<Arc<Semaphore>>,
     default_timeout: Option<std::time::Duration>,
+    notifier: Option<Arc<WebhookNotifier>>,
 ) {
     let checks = state.check_configs();
-    run_checks_once(state, checks, semaphore, default_timeout).await;
+    run_checks_once(state, checks, semaphore, default_timeout, notifier).await;
 }
 
 pub async fn run_checks_once(
@@ -40,12 +49,14 @@ pub async fn run_checks_once(
     checks: Vec<crate::config::CheckConfig>,
     semaphore: Option<Arc<Semaphore>>,
     default_timeout: Option<std::time::Duration>,
+    notifier: Option<Arc<WebhookNotifier>>,
 ) {
     tracing::debug!("scheduler tick");
 
     let futures = checks.into_iter().map(|cfg| {
         let state = state.clone();
         let semaphore = semaphore.clone();
+        let notifier = notifier.clone();
 
         async move {
             // Optional concurrency limit
@@ -102,7 +113,11 @@ pub async fn run_checks_once(
             };
 
             tracing::info!(check = %cfg.name, status = ?result.status, duration = ?duration, "check finished");
-            state.update(result).await;
+            if let Some(event) = state.update(result).await
+                && let Some(notifier) = notifier.as_ref()
+            {
+                notifier.notify(event);
+            }
         }
     });
 

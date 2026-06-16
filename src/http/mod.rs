@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tower_http::services::ServeDir;
 
 use crate::http::healthz::{
-    aggregate_healthz, details_healthz, details_healthz_one, group_aggregate_healthz,
+    aggregate_healthz, details_healthz, details_healthz_history, details_healthz_one, group_aggregate_healthz,
     group_details_healthz, group_profile_healthz, self_healthz,
 };
 use crate::http::metrics::{Metrics, metrics_handler};
@@ -64,6 +64,13 @@ pub fn router(state: Arc<AppState>, metrics: Arc<Metrics>) -> Router {
             get({
                 let state = state.clone();
                 move |path| details_healthz_one(state.clone(), path)
+            }),
+        )
+        .route(
+            "/healthz/details/{check_name}/history",
+            get({
+                let state = state.clone();
+                move |path| details_healthz_history(state.clone(), path)
             }),
         )
         .route(
