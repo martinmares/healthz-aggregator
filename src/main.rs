@@ -1,10 +1,11 @@
 mod checks;
 mod config;
 mod http;
+mod notifier;
 mod scheduler;
 mod state;
 
-use crate::{config::Config, http::metrics::Metrics, state::AppState};
+use crate::{config::Config, http::metrics::Metrics, notifier::WebhookNotifier, state::AppState};
 use clap::{Parser, ValueEnum};
 use serde::Serialize;
 use std::sync::Arc;
@@ -121,9 +122,16 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let state = Arc::new(AppState::new(&cfg));
+    let notifier = cfg
+        .notifications
+        .as_ref()
+        .and_then(|notifications| notifications.webhook.clone())
+        .map(WebhookNotifier::new)
+        .transpose()?
+        .map(Arc::new);
 
     if cli.run_once || cli.check.is_some() || cli.group.is_some() {
-        let exit_code = match run_cli_once(state, &cfg, &cli).await {
+        let exit_code = match run_cli_once(state, &cfg, &cli, notifier.clone()).await {
             Ok(()) => 0,
             Err(err) => {
                 if cli.output == OutputFormat::Json {
@@ -147,6 +155,7 @@ async fn main() -> anyhow::Result<()> {
         cfg.global.refresh_interval,
         cfg.global.max_concurrency,
         cfg.global.default_timeout,
+        notifier,
     );
 
     let metrics_cfg = cfg
@@ -189,7 +198,12 @@ fn ui_url_from_bind(bind_addr: &str) -> Option<String> {
     Some(format!("http://{host}:{port}/ui"))
 }
 
-async fn run_cli_once(state: Arc<AppState>, cfg: &Config, cli: &Cli) -> anyhow::Result<()> {
+async fn run_cli_once(
+    state: Arc<AppState>,
+    cfg: &Config,
+    cli: &Cli,
+    notifier: Option<Arc<WebhookNotifier>>,
+) -> anyhow::Result<()> {
     let selected_checks = if let Some(check_name) = &cli.check {
         let check = cfg
             .checks
@@ -227,6 +241,7 @@ async fn run_cli_once(state: Arc<AppState>, cfg: &Config, cli: &Cli) -> anyhow::
         selected_checks.clone(),
         semaphore,
         cfg.global.default_timeout,
+        notifier,
     )
     .await;
 
