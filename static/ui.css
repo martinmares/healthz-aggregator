@@ -39,6 +39,11 @@ th.hc-col-last, td.hc-col-last {
   width: 16rem;
 }
 
+th.hc-col-trend, td.hc-col-trend {
+  white-space: nowrap;
+  width: 8.5rem;
+}
+
 th.hc-col-status, td.hc-col-status {
   white-space: nowrap;
   width: 7rem;
@@ -196,6 +201,34 @@ th.hc-col-actions, td.hc-col-actions {
   display: inline-block;
 }
 
+.hc-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: .2rem;
+  min-height: 1.25rem;
+}
+
+.hc-trend-dot {
+  width: .55rem;
+  height: .55rem;
+  border-radius: 999px;
+  display: inline-block;
+  background: rgba(var(--tblr-secondary-rgb, 108, 117, 125), .3);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08);
+}
+
+.hc-trend-up {
+  background: rgba(var(--tblr-success-rgb, 46, 204, 113), .9);
+}
+
+.hc-trend-warn {
+  background: rgba(var(--tblr-warning-rgb, 241, 196, 15), .9);
+}
+
+.hc-trend-down {
+  background: rgba(var(--tblr-danger-rgb, 231, 76, 60), .9);
+}
+
 .hc-modal-content {
   box-shadow:
     0 2.25rem 5.5rem rgba(15, 23, 42, .42),
@@ -204,6 +237,14 @@ th.hc-col-actions, td.hc-col-actions {
 
 .modal.modal-blur .modal-content {
   border: 1px solid rgba(var(--tblr-border-color-rgb, 148, 163, 184), .24);
+}
+
+#check-detail-history-tbody td {
+  vertical-align: middle;
+}
+
+#check-detail-history-tbody .font-monospace {
+  font-size: .875rem;
 }
 
 #profile-test-body {

@@ -18,6 +18,7 @@ struct CheckRow {
     status: String,
     critical: bool,
     last_run: String,
+    trend: Vec<String>,
 
     // Plain string is used for conditional rendering.
     error: String,
@@ -76,6 +77,7 @@ struct UiCheckSnapshot {
     status: String,
     critical: bool,
     last_run: Option<String>,
+    trend: Vec<String>,
     error: String,
     labels: Vec<String>,
 }
@@ -343,6 +345,8 @@ async fn build_ui_model(state: &AppState, requested_group: Option<String>) -> Op
             )
         };
 
+    let history_by_check = state.recent_history_snapshot(10).await;
+
     let mut snapshot_checks: Vec<UiCheckSnapshot> = results
         .iter()
         .map(|r| UiCheckSnapshot {
@@ -350,6 +354,10 @@ async fn build_ui_model(state: &AppState, requested_group: Option<String>) -> Op
             status: status_str(r.status),
             critical: r.critical,
             last_run: fmt_rfc3339_opt(r.last_run),
+            trend: history_by_check
+                .get(&r.name)
+                .map(|entries| entries.iter().map(|entry| status_str(entry.status)).collect())
+                .unwrap_or_default(),
             error: r.error.clone().unwrap_or_default(),
             labels: labels_to_vec(r),
         })
@@ -365,6 +373,10 @@ async fn build_ui_model(state: &AppState, requested_group: Option<String>) -> Op
                 status: status_str(r.status),
                 critical: r.critical,
                 last_run: fmt_rfc3339_or_dash(r.last_run),
+                trend: history_by_check
+                    .get(&r.name)
+                    .map(|entries| entries.iter().map(|entry| status_str(entry.status)).collect())
+                    .unwrap_or_default(),
                 error_html: error_to_popover_html(&error),
                 labels_html: labels_to_popover_html(&r),
                 error,

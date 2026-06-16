@@ -95,14 +95,6 @@
                     <a id="scope-health-link" href="{{ scope_health_href }}" target="_blank" rel="noopener">{{ scope_health_href }}</a>
                     <span class="mx-1">|</span>
                     <a id="scope-details-link" href="{{ details_href }}" target="_blank" rel="noopener">{{ details_href }}</a>
-                    <span id="scope-profile-separator" class="mx-1 {% if has_profile_testing %}{% else %}d-none{% endif %}">|</span>
-                    <button
-                      type="button"
-                      class="btn btn-link btn-sm p-0 align-baseline hc-profile-trigger {% if has_profile_testing %}{% else %}d-none{% endif %}"
-                      id="scope-profile-trigger"
-                      data-bs-toggle="modal"
-                      data-bs-target="#profile-test-modal"
-                    >test profile</button>
                   </div>
                   <div id="scope-default-profile-wrap" class="text-muted small hc-scope-profile {% if has_profile_testing %}{% else %}d-none{% endif %}">
                     default profile:
@@ -113,6 +105,15 @@
                 </div>
 
                 <div class="card-actions">
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary btn-sm {% if has_profile_testing %}{% else %}d-none{% endif %}"
+                    id="scope-profile-trigger"
+                    data-bs-toggle="modal"
+                    data-bs-target="#profile-test-modal"
+                  >
+                    <i class="ti ti-route-alt-left me-1"></i>Test profile
+                  </button>
                   <a class="btn btn-outline-secondary btn-sm" id="details-link" href="{{ details_href }}" target="_blank" rel="noopener">
                     <i class="ti ti-code me-1"></i>Details
                   </a>
@@ -191,6 +192,7 @@
                     <tr>
                       <th class="hc-col-check">Check</th>
                       <th class="hc-col-last">Last</th>
+                      <th class="hc-col-trend">Trend</th>
                       <th class="hc-col-status">Status</th>
                       <th class="hc-col-critical">Critical</th>
                       <th class="hc-col-actions">Actions</th>
@@ -217,6 +219,14 @@
                         {% else %}
                           <span class="text-muted">—</span>
                         {% endif %}
+                      </td>
+
+                      <td class="hc-col-trend">
+                        <div class="hc-trend" title="Recent effective states">
+                          {% for point in c.trend %}
+                            <span class="hc-trend-dot hc-trend-{{ point }}"></span>
+                          {% endfor %}
+                        </div>
                       </td>
 
                       <td class="hc-col-status">
@@ -319,6 +329,28 @@
           Fetched from <span class="font-monospace" id="check-detail-modal-source">/healthz/details</span>
         </div>
         <pre class="m-0 p-3 border rounded bg-body-tertiary font-monospace overflow-auto text-body" id="check-detail-modal-json" style="max-height: 55vh;">Loading…</pre>
+        <div class="alert alert-info py-2 mt-3 mb-2">
+          History from <span class="font-monospace" id="check-detail-history-source">/healthz/details/check/history</span>
+        </div>
+        <div id="check-detail-history-empty" class="small text-muted d-none">No history available yet.</div>
+        <div class="table-responsive border rounded">
+          <table class="table table-sm table-vcenter mb-0">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Raw</th>
+                <th>Effective</th>
+                <th>Duration</th>
+                <th>Error</th>
+              </tr>
+            </thead>
+            <tbody id="check-detail-history-tbody">
+              <tr>
+                <td colspan="5" class="text-muted">Loading…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>

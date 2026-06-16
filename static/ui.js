@@ -230,13 +230,101 @@ const HealthzUi = (function () {
     return { check };
   }
 
-  function setModal(title, text, source) {
+  async function fetchCheckHistory(name) {
+    const resp = await fetch(`/healthz/details/${encodeURIComponent(name)}/history`, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (resp.status === 404) {
+      return { history: null };
+    }
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status} fetching /healthz/details/${name}/history`);
+    }
+    return await resp.json();
+  }
+
+  function statusBadge(status) {
+    const normalized = String(status || "down").toLowerCase();
+    if (normalized === "up") {
+      return '<span class="badge bg-success-lt">UP</span>';
+    }
+    if (normalized === "warn") {
+      return '<span class="badge bg-warning-lt">WARN</span>';
+    }
+    return '<span class="badge bg-danger-lt">DOWN</span>';
+  }
+
+  function formatDuration(value) {
+    if (value == null) return "—";
+    if (typeof value === "string") return value;
+    if (typeof value === "object" && typeof value.secs === "number") {
+      const nanos = typeof value.nanos === "number" ? value.nanos : 0;
+      const totalMs = (value.secs * 1000) + Math.round(nanos / 1_000_000);
+      if (totalMs < 1000) return `${totalMs}ms`;
+      return `${(totalMs / 1000).toFixed(3)}s`;
+    }
+    return String(value);
+  }
+
+  function formatHistoryTimestamp(value) {
+    if (!value) return "—";
+    if (typeof value === "string") {
+      return HealthzUi.formatLocalDateTime(value) || value;
+    }
+    if (typeof value === "object" && typeof value.secs_since_epoch === "number") {
+      const nanos = typeof value.nanos_since_epoch === "number" ? value.nanos_since_epoch : 0;
+      const ms = (value.secs_since_epoch * 1000) + Math.round(nanos / 1_000_000);
+      return HealthzUi.formatLocalDateTime(new Date(ms)) || "—";
+    }
+    return String(value);
+  }
+
+  function renderHistoryRows(history) {
+    const tbody = document.getElementById("check-detail-history-tbody");
+    const empty = document.getElementById("check-detail-history-empty");
+    if (!tbody) return;
+
+    const entries = Array.isArray(history) ? history : [];
+    tbody.innerHTML = "";
+
+    if (entries.length === 0) {
+      if (empty) empty.classList.remove("d-none");
+      const tr = document.createElement("tr");
+      tr.innerHTML = '<td colspan="5" class="text-muted">No history available yet.</td>';
+      tbody.appendChild(tr);
+      return;
+    }
+
+    if (empty) empty.classList.add("d-none");
+
+    entries
+      .slice()
+      .reverse()
+      .forEach((entry) => {
+        const tr = document.createElement("tr");
+        const timestamp = formatHistoryTimestamp(entry && entry.timestamp);
+        const errorText = entry && entry.error ? String(entry.error) : "—";
+        tr.innerHTML = `
+          <td class="font-monospace">${HealthzUi.escapeHtml(timestamp)}</td>
+          <td>${statusBadge(entry && entry.raw_status)}</td>
+          <td>${statusBadge(entry && entry.status)}</td>
+          <td class="font-monospace">${HealthzUi.escapeHtml(formatDuration(entry && entry.duration))}</td>
+          <td class="text-break" title="${HealthzUi.escapeHtml(errorText)}">${HealthzUi.escapeHtml(errorText)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+  }
+
+  function setModal(title, text, source, historySource) {
     const t = document.getElementById("check-detail-modal-title");
     const pre = document.getElementById("check-detail-modal-json");
     const src = document.getElementById("check-detail-modal-source");
+    const historySrc = document.getElementById("check-detail-history-source");
     if (t) t.textContent = title;
     if (pre) pre.textContent = text;
     if (src && source) src.textContent = source;
+    if (historySrc && historySource) historySrc.textContent = historySource;
   }
 
   document.addEventListener("click", (evt) => {
@@ -266,22 +354,43 @@ const HealthzUi = (function () {
 
     const name = btn.getAttribute("data-check-name") || "";
     const source = `/healthz/details/${encodeURIComponent(name)}`;
-    setModal(name ? `Check: ${name}` : "Check details", "Loading…", source);
+    const historySource = `${source}/history`;
+    setModal(name ? `Check: ${name}` : "Check details", "Loading…", source, historySource);
+    renderHistoryRows([]);
+    const historyBody = document.getElementById("check-detail-history-tbody");
+    if (historyBody) {
+      historyBody.innerHTML = '<tr><td colspan="5" class="text-muted">Loading…</td></tr>';
+    }
 
     (async () => {
       try {
-        const { check } = await fetchCheckDetails(name);
+        const [{ check }, historyResponse] = await Promise.all([
+          fetchCheckDetails(name),
+          fetchCheckHistory(name),
+        ]);
         if (!check) {
-          setModal(`Check: ${name}`, `Not found (${source}).`, source);
+          setModal(`Check: ${name}`, `Not found (${source}).`, source, historySource);
+          renderHistoryRows([]);
           return;
         }
-        setModal(`Check: ${name}`, JSON.stringify(check, null, 2), source);
+        setModal(
+          `Check: ${name}`,
+          JSON.stringify(check, null, 2),
+          source,
+          historySource
+        );
+        renderHistoryRows(historyResponse && historyResponse.history ? historyResponse.history : []);
       } catch (e) {
         setModal(
           `Check: ${name}`,
           `Failed to load details: ${e && e.message ? e.message : e}`,
-          source
+          source,
+          historySource
         );
+        const tbody = document.getElementById("check-detail-history-tbody");
+        if (tbody) {
+          tbody.innerHTML = `<tr><td colspan="5" class="text-danger">Failed to load history.</td></tr>`;
+        }
       }
     })();
   });
@@ -473,7 +582,6 @@ const HealthzUi = (function () {
   function updateProfileUi(data) {
     const hasProfiles = !!(data && data.has_profile_testing);
     const trigger = document.getElementById("scope-profile-trigger");
-    const separator = document.getElementById("scope-profile-separator");
     const wrap = document.getElementById("scope-default-profile-wrap");
     const defaultProfile = document.getElementById("scope-default-profile");
     const defaultLink = document.getElementById("scope-default-profile-link");
@@ -492,7 +600,6 @@ const HealthzUi = (function () {
       trigger.classList.toggle("d-none", !hasProfiles);
       trigger.disabled = !hasProfiles;
     }
-    if (separator) separator.classList.toggle("d-none", !hasProfiles);
     if (wrap) wrap.classList.toggle("d-none", !hasProfiles);
 
     if (!hasProfiles) {
@@ -562,6 +669,17 @@ const HealthzUi = (function () {
     if (status === "up") return "UP";
     if (status === "warn") return "WARN";
     return "DOWN";
+  }
+
+  function renderTrend(container, trend) {
+    if (!container) return;
+    container.innerHTML = "";
+    const items = Array.isArray(trend) ? trend : [];
+    items.forEach((status) => {
+      const dot = document.createElement("span");
+      dot.className = `hc-trend-dot hc-trend-${String(status || "down")}`;
+      container.appendChild(dot);
+    });
   }
 
   function createButton({ kind, text, icon, className, popoverTitle, popoverHtml, checkName }) {
@@ -640,6 +758,15 @@ const HealthzUi = (function () {
     fillLastCell(tdLast, check.last_run);
 
     // Status
+    const tdTrend = document.createElement("td");
+    tdTrend.className = "hc-col-trend";
+    const trend = document.createElement("div");
+    trend.className = "hc-trend";
+    trend.setAttribute("title", "Recent effective states");
+    renderTrend(trend, check.trend);
+    tdTrend.appendChild(trend);
+
+    // Status
     const tdStatus = document.createElement("td");
     tdStatus.className = "hc-col-status";
     const badge = document.createElement("span");
@@ -666,6 +793,7 @@ const HealthzUi = (function () {
 
     tr.appendChild(tdName);
     tr.appendChild(tdLast);
+    tr.appendChild(tdTrend);
     tr.appendChild(tdStatus);
     tr.appendChild(tdCritical);
     tr.appendChild(tdActions);
@@ -751,6 +879,12 @@ const HealthzUi = (function () {
       } else {
         fillLastCell(tdLast, null);
       }
+    }
+
+    // Status
+    const trend = tr.querySelector(".hc-trend");
+    if (trend) {
+      renderTrend(trend, check.trend);
     }
 
     // Status
@@ -862,6 +996,7 @@ const HealthzUi = (function () {
         status: String(c.status || "down"),
         critical: !!c.critical,
         last_run: c.last_run || null,
+        trend: Array.isArray(c.trend) ? c.trend : [],
         error: c.error || "",
         labels: Array.isArray(c.labels) ? c.labels : [],
       };
