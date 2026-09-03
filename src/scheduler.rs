@@ -1,7 +1,7 @@
 use crate::{
     checks,
-    notifier::WebhookNotifier,
     config::CheckSpec,
+    notifier::WebhookNotifier,
     state::{AppState, CheckResult, CheckStatus},
 };
 use anyhow::anyhow;
@@ -130,8 +130,12 @@ fn check_timeout(cfg: &crate::config::CheckConfig) -> Option<std::time::Duration
         CheckSpec::Http { timeout, .. } => *timeout,
         CheckSpec::HttpJson { timeout, .. } => *timeout,
         CheckSpec::TlsCert { timeout, .. } => *timeout,
-        CheckSpec::Postgres { connect_timeout, .. } => *connect_timeout,
-        CheckSpec::Oracle { connect_timeout, .. } => *connect_timeout,
+        CheckSpec::Postgres {
+            connect_timeout, ..
+        } => *connect_timeout,
+        CheckSpec::Oracle {
+            connect_timeout, ..
+        } => *connect_timeout,
         CheckSpec::File { .. } => None,
     }
 }

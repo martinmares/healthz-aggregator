@@ -1,5 +1,5 @@
 use crate::config::{CheckConfig, CheckSpec};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use regex::Regex;
 use serde_json::Value;
 

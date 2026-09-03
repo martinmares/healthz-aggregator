@@ -1,7 +1,10 @@
 use crate::config::{CheckConfig, CheckSpec};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use regex::Regex;
-use reqwest::{header::{HeaderMap, HeaderName, HeaderValue}, Client, Method};
+use reqwest::{
+    Client, Method,
+    header::{HeaderMap, HeaderName, HeaderValue},
+};
 use serde_json::Value;
 
 use super::json_path;
@@ -72,7 +75,11 @@ pub async fn run(cfg: &CheckConfig) -> Result<()> {
     if let Some(code) = status_code
         && resp.status().as_u16() != code
     {
-        return Err(anyhow!("unexpected status {} (expected {})", resp.status(), code));
+        return Err(anyhow!(
+            "unexpected status {} (expected {})",
+            resp.status(),
+            code
+        ));
     }
 
     let json: Value = resp.json().await.context("parsing JSON body")?;
@@ -87,7 +94,9 @@ pub async fn run(cfg: &CheckConfig) -> Result<()> {
                 _ => value.to_string(),
             };
             if got != expect {
-                return Err(anyhow!("json_path value mismatch (got {got}, expected {expect})"));
+                return Err(anyhow!(
+                    "json_path value mismatch (got {got}, expected {expect})"
+                ));
             }
         }
 

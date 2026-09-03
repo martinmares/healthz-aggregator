@@ -54,15 +54,7 @@ pub async fn group_aggregate_healthz(
         return (StatusCode::NOT_FOUND, "group not found").into_response();
     };
 
-    aggregate_response(
-        &state,
-        ok,
-        summary,
-        failed,
-        warn,
-        Some(group_name),
-        None,
-    )
+    aggregate_response(&state, ok, summary, failed, warn, Some(group_name), None)
 }
 
 pub async fn group_profile_healthz(
@@ -199,10 +191,13 @@ fn custom_aggregate_response(profile: &ResponseProfileConfig, ok: bool) -> Respo
             StatusCode::SERVICE_UNAVAILABLE
         });
 
-    let body = spec
-        .body
-        .clone()
-        .unwrap_or_else(|| if ok { "OK".to_string() } else { "FAILED".to_string() });
+    let body = spec.body.clone().unwrap_or_else(|| {
+        if ok {
+            "OK".to_string()
+        } else {
+            "FAILED".to_string()
+        }
+    });
     let content_type = spec
         .content_type
         .clone()

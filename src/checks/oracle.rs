@@ -1,5 +1,5 @@
 use crate::config::{CheckConfig, CheckSpec};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 #[cfg(feature = "oracle")]
 use anyhow::Context;
@@ -20,7 +20,8 @@ fn build_connect_string(
         return Ok(cs.to_string());
     }
 
-    let host = host.ok_or_else(|| anyhow!("oracle.host (or oracle.connection_string) is required"))?;
+    let host =
+        host.ok_or_else(|| anyhow!("oracle.host (or oracle.connection_string) is required"))?;
     let port = port.unwrap_or(1521);
     if let Some(svc) = service_name {
         return Ok(format!("{host}:{port}/{svc}"));
@@ -103,7 +104,8 @@ pub async fn run(cfg: &CheckConfig) -> Result<()> {
     #[cfg(feature = "oracle")]
     {
         let timeout = connect_timeout.unwrap_or(std::time::Duration::from_secs(5));
-        let connect_string = build_connect_string(connection_string, host, port, service_name, sid)?;
+        let connect_string =
+            build_connect_string(connection_string, host, port, service_name, sid)?;
         let username = username.to_string();
         let password = password.to_string();
         let query = query.to_string();

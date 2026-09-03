@@ -1,10 +1,14 @@
 use crate::config::{CheckConfig, CheckSpec};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use tokio::net::TcpStream;
 
 pub async fn run(cfg: &CheckConfig) -> Result<()> {
     let (host, port, timeout) = match &cfg.spec {
-        CheckSpec::Tcp { host, port, timeout } => (host, *port, *timeout),
+        CheckSpec::Tcp {
+            host,
+            port,
+            timeout,
+        } => (host, *port, *timeout),
         _ => return Err(anyhow!("invalid check spec for tcp")),
     };
 

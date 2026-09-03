@@ -1,15 +1,15 @@
 use crate::config::{CheckConfig, CheckSpec};
 use anyhow::Result;
 
+pub mod file;
 pub mod http;
 pub mod http_json;
-pub mod tcp;
+mod json_path;
+pub mod oracle;
 pub mod postgres;
+pub mod tcp;
 pub mod tls_cert;
 pub mod tls_client;
-mod json_path;
-pub mod file;
-pub mod oracle;
 
 pub async fn run_check(cfg: &CheckConfig) -> Result<()> {
     match &cfg.spec {

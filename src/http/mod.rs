@@ -3,8 +3,8 @@ use std::sync::Arc;
 use tower_http::services::ServeDir;
 
 use crate::http::healthz::{
-    aggregate_healthz, details_healthz, details_healthz_history, details_healthz_one, group_aggregate_healthz,
-    group_details_healthz, group_profile_healthz, self_healthz,
+    aggregate_healthz, details_healthz, details_healthz_history, details_healthz_one,
+    group_aggregate_healthz, group_details_healthz, group_profile_healthz, self_healthz,
 };
 use crate::http::metrics::{Metrics, metrics_handler};
 use crate::http::ui::{ui_handler, ui_snapshot_handler};
@@ -119,8 +119,36 @@ pub fn router(state: Arc<AppState>, metrics: Arc<Metrics>) -> Router {
                 move || metrics_handler(state.clone(), metrics.clone())
             }),
         )
-        // static assets for UI
+        // static assets for UI; the core UI dependencies are embedded into the binary.
         .route("/static/ui.js", get(static_assets::ui_js))
         .route("/static/ui.css", get(static_assets::ui_css))
+        .route(
+            "/static/vendor/tabler/tabler.min.css",
+            get(static_assets::tabler_css),
+        )
+        .route(
+            "/static/vendor/tabler/tabler.min.js",
+            get(static_assets::tabler_js),
+        )
+        .route(
+            "/static/vendor/tabler-icons/tabler-icons.min.css",
+            get(static_assets::tabler_icons_css),
+        )
+        .route(
+            "/static/vendor/tabler-icons/fonts/tabler-icons.eot",
+            get(static_assets::tabler_icons_eot),
+        )
+        .route(
+            "/static/vendor/tabler-icons/fonts/tabler-icons.ttf",
+            get(static_assets::tabler_icons_ttf),
+        )
+        .route(
+            "/static/vendor/tabler-icons/fonts/tabler-icons.woff",
+            get(static_assets::tabler_icons_woff),
+        )
+        .route(
+            "/static/vendor/tabler-icons/fonts/tabler-icons.woff2",
+            get(static_assets::tabler_icons_woff2),
+        )
         .nest_service("/static", ServeDir::new("static"))
 }

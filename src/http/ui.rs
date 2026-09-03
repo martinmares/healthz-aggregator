@@ -1,7 +1,7 @@
 use askama::Template;
 use axum::{
-    extract::Query,
     Json,
+    extract::Query,
     http::StatusCode,
     response::{Html, IntoResponse},
 };
@@ -305,45 +305,44 @@ async fn build_ui_model(state: &AppState, requested_group: Option<String>) -> Op
         scope_default_profile_href,
         has_profile_testing,
         profile_options,
-    ) =
-        if let Some(group_name) = selected_group.clone() {
-            let (aggregate_ok, summary, _failed, _warn) =
-                state.aggregate_snapshot_for_group(&group_name).await?;
-            let results = state.snapshot_for_group(&group_name).await?;
-            let default_profile = state
-                .default_profile_name_for_group(&group_name)
-                .map(str::to_string)
-                .unwrap_or_else(|| "built-in-json".to_string());
-            (
-                aggregate_ok,
-                summary,
-                results,
-                format!("/groups/{group_name}/healthz"),
-                format!("/groups/{group_name}/healthz/details"),
-                group_name.clone(),
-                format!("Group: {group_name}"),
-                default_profile.clone(),
-                format!("/groups/{group_name}/healthz"),
-                true,
-                build_profile_options(state, &group_name, &default_profile),
-            )
-        } else {
-            let (aggregate_ok, summary, _failed, _warn) = state.aggregate_snapshot().await;
-            let results = state.snapshot().await;
-            (
-                aggregate_ok,
-                summary,
-                results,
-                "/healthz/aggregate".to_string(),
-                "/healthz/details".to_string(),
-                String::new(),
-                "All checks".to_string(),
-                String::new(),
-                String::new(),
-                false,
-                Vec::new(),
-            )
-        };
+    ) = if let Some(group_name) = selected_group.clone() {
+        let (aggregate_ok, summary, _failed, _warn) =
+            state.aggregate_snapshot_for_group(&group_name).await?;
+        let results = state.snapshot_for_group(&group_name).await?;
+        let default_profile = state
+            .default_profile_name_for_group(&group_name)
+            .map(str::to_string)
+            .unwrap_or_else(|| "built-in-json".to_string());
+        (
+            aggregate_ok,
+            summary,
+            results,
+            format!("/groups/{group_name}/healthz"),
+            format!("/groups/{group_name}/healthz/details"),
+            group_name.clone(),
+            format!("Group: {group_name}"),
+            default_profile.clone(),
+            format!("/groups/{group_name}/healthz"),
+            true,
+            build_profile_options(state, &group_name, &default_profile),
+        )
+    } else {
+        let (aggregate_ok, summary, _failed, _warn) = state.aggregate_snapshot().await;
+        let results = state.snapshot().await;
+        (
+            aggregate_ok,
+            summary,
+            results,
+            "/healthz/aggregate".to_string(),
+            "/healthz/details".to_string(),
+            String::new(),
+            "All checks".to_string(),
+            String::new(),
+            String::new(),
+            false,
+            Vec::new(),
+        )
+    };
 
     let history_by_check = state.recent_history_snapshot(10).await;
 
@@ -356,7 +355,12 @@ async fn build_ui_model(state: &AppState, requested_group: Option<String>) -> Op
             last_run: fmt_rfc3339_opt(r.last_run),
             trend: history_by_check
                 .get(&r.name)
-                .map(|entries| entries.iter().map(|entry| status_str(entry.status)).collect())
+                .map(|entries| {
+                    entries
+                        .iter()
+                        .map(|entry| status_str(entry.status))
+                        .collect()
+                })
                 .unwrap_or_default(),
             error: r.error.clone().unwrap_or_default(),
             labels: labels_to_vec(r),
@@ -375,7 +379,12 @@ async fn build_ui_model(state: &AppState, requested_group: Option<String>) -> Op
                 last_run: fmt_rfc3339_or_dash(r.last_run),
                 trend: history_by_check
                     .get(&r.name)
-                    .map(|entries| entries.iter().map(|entry| status_str(entry.status)).collect())
+                    .map(|entries| {
+                        entries
+                            .iter()
+                            .map(|entry| status_str(entry.status))
+                            .collect()
+                    })
                     .unwrap_or_default(),
                 error_html: error_to_popover_html(&error),
                 labels_html: labels_to_popover_html(&r),

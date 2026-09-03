@@ -296,8 +296,8 @@ fn default_webhook_events() -> Vec<WebhookNotificationEvent> {
 impl Config {
     pub fn load_from_path(path: Option<&str>) -> anyhow::Result<Self> {
         let path = path.unwrap_or("config.yaml");
-        let raw = fs::read_to_string(path)
-            .with_context(|| format!("reading config file from {path}"))?;
+        let raw =
+            fs::read_to_string(path).with_context(|| format!("reading config file from {path}"))?;
         let cfg: Self = serde_yaml_ng::from_str(&raw).context("parsing YAML config")?;
         cfg.validate().context("validating config")?;
         Ok(cfg)
@@ -308,21 +308,20 @@ impl Config {
             if let Some(profile_name) = &group_cfg.default_profile
                 && !self.response_profiles.contains_key(profile_name)
             {
-                bail!(
-                    "group '{group_name}' references unknown default_profile '{profile_name}'"
-                );
+                bail!("group '{group_name}' references unknown default_profile '{profile_name}'");
             }
 
             for profile_name in &group_cfg.profiles {
                 if !self.response_profiles.contains_key(profile_name) {
-                    bail!(
-                        "group '{group_name}' references unknown profile '{profile_name}'"
-                    );
+                    bail!("group '{group_name}' references unknown profile '{profile_name}'");
                 }
             }
 
             if let Some(default_profile) = &group_cfg.default_profile
-                && !group_cfg.profiles.iter().any(|profile| profile == default_profile)
+                && !group_cfg
+                    .profiles
+                    .iter()
+                    .any(|profile| profile == default_profile)
             {
                 bail!(
                     "group '{group_name}' default_profile '{default_profile}' must also be present in profiles"
@@ -335,7 +334,10 @@ impl Config {
                 bail!("check '{}' has invalid debounce.fail_after=0", check.name);
             }
             if check.debounce.recover_after == 0 {
-                bail!("check '{}' has invalid debounce.recover_after=0", check.name);
+                bail!(
+                    "check '{}' has invalid debounce.recover_after=0",
+                    check.name
+                );
             }
             for group_name in &check.groups {
                 if !self.groups.contains_key(group_name) {
@@ -400,7 +402,10 @@ checks: []
 
         let cfg: Config = serde_yaml_ng::from_str(yaml).expect("config should parse");
         let err = cfg.validate().expect_err("config should fail validation");
-        assert!(err.to_string().contains("unknown default_profile 'missing'"));
+        assert!(
+            err.to_string()
+                .contains("unknown default_profile 'missing'")
+        );
     }
 
     #[test]

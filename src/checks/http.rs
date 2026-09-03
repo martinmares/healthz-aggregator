@@ -1,7 +1,10 @@
 use crate::config::{CheckConfig, CheckSpec};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use regex::Regex;
-use reqwest::{header::{HeaderMap, HeaderName, HeaderValue}, Client, Method};
+use reqwest::{
+    Client, Method,
+    header::{HeaderMap, HeaderName, HeaderValue},
+};
 
 pub async fn run(cfg: &CheckConfig) -> Result<()> {
     let (
@@ -66,7 +69,11 @@ pub async fn run(cfg: &CheckConfig) -> Result<()> {
     if let Some(code) = status_code
         && resp.status().as_u16() != code
     {
-        return Err(anyhow!("unexpected status {} (expected {})", resp.status(), code));
+        return Err(anyhow!(
+            "unexpected status {} (expected {})",
+            resp.status(),
+            code
+        ));
     }
 
     let needs_body = expected_body_substring.is_some() || expected_body_regex.is_some();

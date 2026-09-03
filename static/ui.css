@@ -263,3 +263,84 @@ th.hc-col-actions, td.hc-col-actions {
     margin-right: 0;
   }
 }
+
+/* Tabler shell alignment with the explorer projects. */
+.navbar-brand a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.navbar-brand .icon {
+  margin-right: .35rem;
+}
+
+.page-header .page-title {
+  letter-spacing: -.015em;
+}
+
+.hc-stat-card {
+  min-height: 100%;
+}
+
+.hc-stat-time {
+  font-size: 1rem;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+#checks-card .card-header {
+  align-items: flex-start;
+}
+
+#checks-card .card-actions,
+.page-header .btn-list {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.hc-table.card-table thead th:first-child,
+.hc-table.card-table tbody td:first-child {
+  padding-left: 1rem;
+}
+
+/* Match the detached modal feel used by the explorer UIs. */
+.modal-backdrop {
+  background-color: rgba(0, 0, 0, .8);
+}
+
+.modal-backdrop.show {
+  opacity: .78;
+}
+
+.modal.modal-blur {
+  backdrop-filter: blur(3px);
+}
+
+.modal .modal-dialog {
+  margin-top: 4.5rem;
+}
+
+.hc-modal-content {
+  box-shadow:
+    0 2.5rem 7rem rgba(0, 0, 0, .55),
+    0 .75rem 2rem rgba(0, 0, 0, .35);
+}
+
+@media (max-width: 767.98px) {
+  .navbar-brand {
+    max-width: calc(100vw - 7rem);
+  }
+
+  .page-header .btn-list {
+    justify-content: flex-start;
+  }
+
+  .modal .modal-dialog {
+    margin-top: 1rem;
+  }
+
+  th.hc-col-actions,
+  td.hc-col-actions {
+    width: 15rem;
+  }
+}

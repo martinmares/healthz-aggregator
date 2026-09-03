@@ -9,12 +9,12 @@ use crate::{config::Config, http::metrics::Metrics, notifier::WebhookNotifier, s
 use clap::{Parser, ValueEnum};
 use serde::Serialize;
 use std::sync::Arc;
-use tokio::sync::Semaphore;
 use tokio::net::TcpListener;
+use tokio::sync::Semaphore;
 use tracing_subscriber::{EnvFilter, fmt};
 
 #[derive(Debug, Parser)]
-#[command(name = "healthz-aggregator")]
+#[command(name = "healthz-aggregator", version)]
 struct Cli {
     /// Path to YAML config file
     #[arg(short, long, env = "HEALTHZ_CONFIG", value_name = "PATH")]
@@ -158,14 +158,11 @@ async fn main() -> anyhow::Result<()> {
         notifier,
     );
 
-    let metrics_cfg = cfg
-        .metrics
-        .clone()
-        .unwrap_or(crate::config::MetricsConfig {
-            namespace: None,
-            name: None,
-            static_labels: None,
-        });
+    let metrics_cfg = cfg.metrics.clone().unwrap_or(crate::config::MetricsConfig {
+        namespace: None,
+        name: None,
+        static_labels: None,
+    });
 
     let metrics = Arc::new(Metrics::new(&metrics_cfg, &cfg.checks));
 

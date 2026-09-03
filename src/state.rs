@@ -174,7 +174,6 @@ impl AppState {
         self.refresh_interval
     }
 
-
     pub fn merge_labels(
         global: &HashMap<String, String>,
         per_check: &HashMap<String, String>,
@@ -320,7 +319,9 @@ impl AppState {
         )
     }
 
-    fn aggregate_results<I>(results: I) -> (bool, AggregateSummary, Vec<CheckResult>, Vec<CheckResult>)
+    fn aggregate_results<I>(
+        results: I,
+    ) -> (bool, AggregateSummary, Vec<CheckResult>, Vec<CheckResult>)
     where
         I: IntoIterator<Item = CheckResult>,
     {
@@ -379,7 +380,10 @@ impl AppState {
         Some(entries.into_iter().collect())
     }
 
-    pub async fn recent_history_snapshot(&self, limit: usize) -> HashMap<String, Vec<CheckHistoryEntry>> {
+    pub async fn recent_history_snapshot(
+        &self,
+        limit: usize,
+    ) -> HashMap<String, Vec<CheckHistoryEntry>> {
         let history = self.history.read().await;
         history
             .iter()
@@ -482,10 +486,12 @@ mod tests {
     use super::{AppState, CheckResult, CheckStatus, sanitize_label_name};
     use crate::config::{
         CheckConfig, CheckSpec, Config, DebouncePolicyConfig, GlobalConfig, GroupConfig,
-        ResponseProfileConfig,
-        ServerConfig,
+        ResponseProfileConfig, ServerConfig,
     };
-    use std::{collections::HashMap, time::{Duration, SystemTime}};
+    use std::{
+        collections::HashMap,
+        time::{Duration, SystemTime},
+    };
 
     #[test]
     fn sanitize_label_name_basic() {

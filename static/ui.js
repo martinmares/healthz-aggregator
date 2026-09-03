@@ -923,6 +923,26 @@ const HealthzUi = (function () {
         aggValue.textContent = "FAILED";
       }
     }
+    if (aggValue) {
+      aggValue.classList.toggle("text-success", !!data.aggregate_ok);
+      aggValue.classList.toggle("text-danger", !data.aggregate_ok);
+      aggValue.textContent = data.aggregate_ok ? "OK" : "FAILED";
+    }
+
+    const navbarStatus = document.getElementById("navbar-status");
+    if (navbarStatus) {
+      navbarStatus.className = data.aggregate_ok ? "badge bg-success-lt" : "badge bg-danger-lt";
+      navbarStatus.textContent = data.aggregate_ok ? "OK" : "FAILED";
+    }
+
+    const navbarScope = document.getElementById("navbar-scope");
+    if (navbarScope && data.active_scope_label) navbarScope.textContent = data.active_scope_label;
+
+    const navHealthLink = document.getElementById("nav-health-link");
+    if (navHealthLink && data.scope_health_href) navHealthLink.setAttribute("href", data.scope_health_href);
+
+    const navDetailsLink = document.getElementById("nav-details-link");
+    if (navDetailsLink && data.details_href) navDetailsLink.setAttribute("href", data.details_href);
 
     const uptime = document.getElementById("badge-uptime");
     if (uptime && data.uptime) uptime.textContent = data.uptime;
@@ -968,10 +988,22 @@ const HealthzUi = (function () {
 
   function updateSummary(data) {
     const sum = document.getElementById("checks-summary");
-    if (!sum) return;
+    if (sum) {
+      sum.textContent =
+        `total=${data.summary_total}, up=${data.summary_up}, warn=${data.summary_warn}, down=${data.summary_down}, critical_down=${data.summary_critical_down}`;
+    }
 
-    sum.textContent =
-      `total=${data.summary_total}, up=${data.summary_up}, warn=${data.summary_warn}, down=${data.summary_down}, critical_down=${data.summary_critical_down}`;
+    const fields = {
+      "summary-total": data.summary_total,
+      "summary-up": data.summary_up,
+      "summary-warn": data.summary_warn,
+      "summary-down": data.summary_down,
+      "summary-critical-down": data.summary_critical_down,
+    };
+    Object.entries(fields).forEach(([id, value]) => {
+      const el = document.getElementById(id);
+      if (el && value !== undefined && value !== null) el.textContent = String(value);
+    });
   }
 
   function updateTable(data) {

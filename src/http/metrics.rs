@@ -102,7 +102,10 @@ impl Metrics {
         let registry = Registry::new();
 
         let health_up = GaugeVec::new(
-            Opts::new(format!("{}{}_up", ns, name), "Health check status (1=up, 0=down)"),
+            Opts::new(
+                format!("{}{}_up", ns, name),
+                "Health check status (1=up, 0=down)",
+            ),
             &label_refs,
         )
         .unwrap();
@@ -163,9 +166,15 @@ impl Metrics {
         registry.register(Box::new(duration.clone())).unwrap();
         registry.register(Box::new(last_run.clone())).unwrap();
         registry.register(Box::new(group_up.clone())).unwrap();
-        registry.register(Box::new(group_checks_total.clone())).unwrap();
-        registry.register(Box::new(group_checks_down.clone())).unwrap();
-        registry.register(Box::new(group_checks_warn.clone())).unwrap();
+        registry
+            .register(Box::new(group_checks_total.clone()))
+            .unwrap();
+        registry
+            .register(Box::new(group_checks_down.clone()))
+            .unwrap();
+        registry
+            .register(Box::new(group_checks_warn.clone()))
+            .unwrap();
 
         Self {
             registry,
@@ -201,7 +210,9 @@ impl Metrics {
             self.health_up.with_label_values(&values).set(up);
 
             if let Some(d) = r.duration {
-                self.duration.with_label_values(&values).set(d.as_secs_f64());
+                self.duration
+                    .with_label_values(&values)
+                    .set(d.as_secs_f64());
             }
 
             if let Some(ts) = r.last_run
